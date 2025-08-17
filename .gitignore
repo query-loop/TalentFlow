@@ -1,0 +1,28 @@
+# Node / SvelteKit
+node_modules/
+.svelte-kit/
+.vite/
+.build/
+.env
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Ktor / Gradle
+.gradle/
+**/build/
+**/out/
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
