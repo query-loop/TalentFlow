@@ -1,10 +1,27 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
+   import StepFooter from '$lib/components/StepFooter.svelte';
+  import { onMount } from 'svelte';
+  import { getPipeline, type Pipeline } from '$lib/pipelines';
+  import { getActivePipelineId } from '$lib/pipelineTracker';
   let text = '';
   let jd = '';
   let err = '';
   let loading = false;
   let keywords: Array<{ term: string; count: number }> = [];
+
+  // Active pipeline context for header
+  let activePipeline: Pipeline | null = null;
+  let pipelineHeaderName = '';
+  onMount(async () => {
+    try {
+      const pid = getActivePipelineId();
+      if (pid) {
+        activePipeline = await getPipeline(pid);
+        pipelineHeaderName = (activePipeline?.name || activePipeline?.company || '').trim();
+      }
+    } catch {}
+  });
 
   async function run() {
     loading = true; err = ''; keywords = [];
@@ -19,7 +36,12 @@
 </script>
 
 <section class="space-y-4">
-  <h1 class="text-xl font-semibold flex items-center gap-2"><Icon name="tag"/> Keyword Analysis</h1>
+  <h1 class="text-xl font-semibold flex items-center gap-2">
+    <Icon name="tag"/> Keyword Analysis
+    {#if pipelineHeaderName}
+      <span class="text-sm text-gray-500">— {pipelineHeaderName}</span>
+    {/if}
+  </h1>
   <div class="grid md:grid-cols-2 gap-4">
     <div>
       <label class="text-sm text-gray-700 dark:text-gray-200">Resume</label>
@@ -54,3 +76,4 @@
     </div>
   {/if}
 </section>
+<StepFooter current="keywords" />

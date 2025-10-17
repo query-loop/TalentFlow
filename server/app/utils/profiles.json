@@ -1,0 +1,74 @@
+{
+  "profiles": [
+    {
+      "name": "Greenhouse",
+      "match": ["greenhouse.io", "boards.greenhouse.io"],
+      "selectors": {
+        "title": "h1.app-title, h1.job-title, .opening .title, h1",
+        "company": "meta[property='og:site_name'], .company-name, header .company",
+        "location": ".location, .app-location, .location-info, .opening .location",
+        "description": ".content, .section-wrapper, .opening .content, .job-posting"
+      }
+    },
+    {
+      "name": "Lever",
+      "match": ["lever.co", "jobs.lever.co"],
+      "selectors": {
+        "title": "h2.title, h1, .posting-headline h2",
+        "company": "meta[property='og:site_name'], .posting-category .company",
+        "location": ".sort-by-time posting-categories .location, .posting-apply .posting-categories li",
+        "description": ".description, .posting-description, .content"
+      }
+    },
+    {
+      "name": "Workday",
+      "match": ["myworkdayjobs.com", "wd5.myworkdayjobs.com"],
+      "selectors": {
+        "title": "h1, [data-automation-id='jobPostingHeader'] h2",
+        "company": "meta[property='og:site_name']",
+        "location": "[data-automation-id='locations']",
+        "description": "[data-automation-id='jobPostingDescription']"
+      }
+    },
+    {
+      "name": "Ashby",
+      "match": ["jobs.ashbyhq.com"],
+      "selectors": {
+        "title": "h1, .job-title",
+        "company": "meta[property='og:site_name']",
+        "location": ".job-location",
+        "description": ".job-description, .content"
+      }
+    },
+    {
+      "name": "SmartRecruiters",
+      "match": ["smartrecruiters.com"],
+      "selectors": {
+        "title": "h1, .job-title",
+        "company": "meta[property='og:site_name']",
+        "location": ".job-location, .location",
+        "description": ".job-details__content, .job-description"
+      }
+    },
+    {
+      "name": "Teamtailor",
+      "match": ["teamtailor.com"],
+      "selectors": {
+        "title": "h1, .job-title",
+        "company": "meta[property='og:site_name']",
+        "location": ".job-location",
+        "description": ".content, .job-body"
+      }
+    },
+    {
+      "name": "BambooHR",
+      "match": ["bamboohr.com"],
+      "selectors": {
+        "title": "h1, .jobTitle",
+        "company": "meta[property='og:site_name']",
+        "location": ".jobLocation",
+        "description": ".jobDescription"
+      }
+    }
+  ]
+}

@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://talentflow.dev/schemas/job_scraper.json",
+  "type": "object",
+  "title": "Job Posting Scraper Output",
+  "description": "Standardized schema for scraped job posting data with provenance",
+  "required": ["title", "company", "source_url", "retrieved_at"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Job title or position name"
+    },
+    "company": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "Company or organization name"
+    },
+    "req_id": {
+      "type": ["string", "null"],
+      "maxLength": 50,
+      "description": "Job requisition or posting ID"
+    },
+    "team": {
+      "type": ["string", "null"],
+      "maxLength": 100,
+      "description": "Team, department, or division"
+    },
+    "level": {
+      "type": ["string", "null"],
+      "enum": ["intern", "entry", "junior", "mid", "senior", "staff", "principal", "lead", "manager", "director", "vp", "c-level", null],
+      "description": "Seniority or experience level"
+    },
+    "location": {
+      "type": ["string", "null"],
+      "maxLength": 200,
+      "description": "Job location (city, state, country, remote)"
+    },
+    "employment_type": {
+      "type": ["string", "null"],
+      "enum": ["full-time", "part-time", "contract", "temporary", "internship", "freelance", null],
+      "description": "Type of employment"
+    },
+    "posted_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date job was posted (ISO 8601 date format)"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 50,
+      "maxLength": 50000,
+      "description": "Full job description text"
+    },
+    "responsibilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 10,
+        "maxLength": 1000
+      },
+      "maxItems": 50,
+      "description": "List of job responsibilities and duties"
+    },
+    "qualifications": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 5,
+        "maxLength": 1000
+      },
+      "maxItems": 50,
+      "description": "Required and preferred qualifications"
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "maxItems": 100,
+      "uniqueItems": true,
+      "description": "Technical and soft skills mentioned"
+    },
+    "salary": {
+      "type": ["object", "null"],
+      "properties": {
+        "min": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "max": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "default": "USD"
+        },
+        "period": {
+          "type": "string",
+          "enum": ["hourly", "daily", "weekly", "monthly", "yearly"],
+          "default": "yearly"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Salary range and details"
+    },
+    "benefits": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200
+      },
+      "maxItems": 30,
+      "description": "Benefits and perks offered"
+    },
+    "apply_url": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "description": "Direct application URL"
+    },
+    "source_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Original job posting URL"
+    },
+    "retrieved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when data was scraped"
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "extraction_method": {
+          "type": "string",
+          "enum": ["json-ld", "microdata", "dom-selectors", "regex-fallback"],
+          "description": "Primary extraction method used"
+        },
+        "confidence_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Overall confidence in extracted data (0-1)"
+        },
+        "field_sources": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["json-ld", "microdata", "dom", "regex", "derived", "default"]
+          },
+          "description": "Source method for each field"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Validation warnings or repair actions"
+        }
+      },
+      "required": ["extraction_method", "confidence_score"],
+      "additionalProperties": false,
+      "description": "Metadata about data extraction and quality"
+    }
+  },
+  "additionalProperties": false
+}

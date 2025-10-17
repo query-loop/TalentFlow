@@ -1,6 +1,8 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
   import { onMount } from 'svelte';
+  import { listPipelines, type Pipeline } from '$lib/pipelines';
+  import { listPipelinesV2, type PipelineV2 } from '$lib/pipelinesV2';
   let backendOk = false;
   let endpoints: Array<{ method: string; path: string; description: string }>= [];
   let companiesTop: Array<{ name: string; matchScore: number; roles: string[]; reason: string }>= [];
@@ -24,9 +26,9 @@
   let quickTasks: QuickTask[] = [
   { id: 'extract',  label: 'Extract a JD',     href: '/app/extract',  icon: 'tag' },
     { id: 'generate', label: 'Generate a resume', href: '/app/generate', icon: 'sparkles' },
-    { id: 'ats',      label: 'Check ATS score',   href: '/app/ats',      icon: 'shield-check' },
+    { id: 'ats',      label: 'ATS score',   href: '/app/ats',      icon: 'shield-check' },
     { id: 'keywords', label: 'Run keyword analysis', href: '/app/keywords', icon: 'tag' },
-    { id: 'themes',   label: 'Choose a theme',    href: '/app/themes',   icon: 'palette' }
+    // Themes quick task removed
   ];
   let draggingTaskId: string | null = null;
   function saveQuickTasksOrder() {
@@ -95,113 +97,109 @@
     return out;
   }
 
-  // Pipeline state
-  type StepKey = 'extract' | 'generate' | 'keywords' | 'ats' | 'export' | 'save';
+  // Pipeline state - using API types
+  type StepKey = 'extract' | 'profile' | 'generate' | 'keywords' | 'ats' | 'export' | 'save';
   type StepStatus = 'pending' | 'active' | 'complete';
   type PipelineStep = { key: StepKey; label: string; icon: any; link: string; desc: string };
   const pipelineSteps: PipelineStep[] = [
     { key: 'extract',  label: 'Extract JD', icon: 'tag',          link: '/app/extract',   desc: 'Paste or upload job description' },
+    { key: 'profile',  label: 'Profile',    icon: 'user',         link: '/app/generate',  desc: 'Build candidate profile' },
     { key: 'generate', label: 'Generate',   icon: 'sparkles',     link: '/app/generate',  desc: 'Create a theme-aware draft' },
     { key: 'keywords', label: 'Keywords',   icon: 'tag',          link: '/app/keywords',  desc: 'Analyze terms and gaps' },
     { key: 'ats',      label: 'ATS',        icon: 'shield-check', link: '/app/ats',       desc: 'Score and get tips' },
-    { key: 'export',   label: 'Export',     icon: 'layers',       link: '/app/themes',    desc: 'Export to PDF/DOCX' },
+  { key: 'export',   label: 'Export',     icon: 'layers',       link: '/app/export',    desc: 'Export to PDF/DOCX' },
     { key: 'save',     label: 'Save',       icon: 'folder',       link: '/app/library',   desc: 'Store in your Library' }
   ];
-  type PipelineInstance = {
-    id: string;
-    name: string;
-    createdAt: number;
-    statuses: Record<StepKey, StepStatus>;
-  };
-  let pipelines: PipelineInstance[] = [];
-  let activePipelineId: string | null = null;
-  let recentPipelines: PipelineInstance[] = [];
+  
+  // Use real API pipelines
+  let allPipelines: (Pipeline | PipelineV2)[] = [];
+  let recentPipelines: (Pipeline | PipelineV2)[] = [];
+  let pipelinesError: string | null = null;
   // UI state for expand/collapse of the recent pipelines section
   let pipelinesExpanded = true;
   function togglePipelines() {
     pipelinesExpanded = !pipelinesExpanded;
   }
 
-  function defaultStatuses(): Record<StepKey, StepStatus> {
-    return { extract: 'active', generate: 'pending', keywords: 'pending', ats: 'pending', export: 'pending', save: 'pending' };
-  }
-  function getActivePipeline(): PipelineInstance | null {
-    return pipelines.find(p => p.id === activePipelineId) || null;
-  }
-  function setActivePipeline(id: string) {
-    activePipelineId = id;
-    localStorage.setItem('tf_active_pipeline', id);
+  // Load pipelines from API
+  async function loadPipelines() {
+    try {
+      pipelinesError = null;
+      const [v1Pipelines, v2Pipelines] = await Promise.allSettled([
+        listPipelines(),
+        listPipelinesV2()
+      ]);
+      
+      const combined: (Pipeline | PipelineV2)[] = [];
+      if (v1Pipelines.status === 'fulfilled') {
+        combined.push(...v1Pipelines.value);
+      }
+      if (v2Pipelines.status === 'fulfilled') {
+        combined.push(...v2Pipelines.value);
+      }
+      
+      // Sort by creation time, most recent first
+      allPipelines = combined.sort((a, b) => b.createdAt - a.createdAt);
+      recentPipelines = allPipelines.slice(0, 3);
+    } catch (e: any) {
+      pipelinesError = e?.message || 'Failed to load pipelines';
+      allPipelines = [];
+      recentPipelines = [];
+    }
   }
 
-  function loadPipelines() {
-    try {
-      const raw = localStorage.getItem('tf_pipelines');
-      pipelines = raw ? JSON.parse(raw) : [];
-    } catch { pipelines = []; }
-    if (!pipelines.length) {
-      const first: PipelineInstance = { id: crypto.randomUUID?.() || String(Date.now()), name: 'Pipeline 1', createdAt: Date.now(), statuses: defaultStatuses() };
-      pipelines = [first];
-      activePipelineId = first.id;
-      savePipelines();
+  // Helper function to get status for a pipeline step
+  function getStepStatus(pipeline: Pipeline | PipelineV2, stepKey: StepKey): StepStatus {
+    if ('statuses' in pipeline && pipeline.statuses && typeof pipeline.statuses === 'object') {
+      const statuses = pipeline.statuses as any;
+      
+      // For V1 pipelines, check the exact key
+      if (statuses[stepKey]) {
+        const status = statuses[stepKey];
+        if (status === 'complete' || status === 'active' || status === 'pending') {
+          return status;
+        }
+      }
+      
+      // For V2 pipelines, map V1 steps to V2 steps
+      const v2Mapping: Record<StepKey, string[]> = {
+        'extract': ['intake', 'jd'],
+        'profile': ['profile'],
+        'generate': ['gaps', 'differentiators', 'draft'],
+        'keywords': ['gaps'],
+        'ats': ['compliance', 'ats'],
+        'export': ['export'],
+        'save': ['actions']
+      };
+      
+      const v2Keys = v2Mapping[stepKey] || [];
+      for (const v2Key of v2Keys) {
+        if (statuses[v2Key]) {
+          const status = statuses[v2Key];
+          if (status === 'complete') return 'complete';
+          if (status === 'active') return 'active';
+        }
+      }
     }
-    const savedActive = localStorage.getItem('tf_active_pipeline');
-    if (savedActive && pipelines.some(p => p.id === savedActive)) activePipelineId = savedActive;
-    if (!activePipelineId) activePipelineId = pipelines[0]?.id || null;
+    return 'pending';
   }
-  function savePipelines() {
-    localStorage.setItem('tf_pipelines', JSON.stringify(pipelines));
-  }
-  function firstIncompleteIndex(statuses: Record<StepKey, StepStatus>) {
-    return pipelineSteps.findIndex(s => statuses[s.key] !== 'complete');
-  }
-  function ensureSingleActive(statuses: Record<StepKey, StepStatus>) {
-    const idx = firstIncompleteIndex(statuses);
-    (Object.keys(statuses) as StepKey[]).forEach(k => statuses[k] = statuses[k] === 'complete' ? 'complete' : 'pending');
-    if (idx >= 0) statuses[pipelineSteps[idx].key] = 'active';
-  }
-  function applyAutoCompletionFromSignals(statuses: Record<StepKey, StepStatus>) {
-    // Heuristics from existing localStorage metrics
-    if (lastGeneratedAt) statuses.generate = 'complete';
-    if (lastKeywordsCount && lastKeywordsCount > 0) statuses.keywords = 'complete';
-    if (lastAtsScore !== null) statuses.ats = 'complete';
-    ensureSingleActive(statuses);
-  }
-  function markActiveCompleteAndNext() {
-    const p = getActivePipeline();
-    if (!p) return;
-    const idx = pipelineSteps.findIndex(s => p.statuses[s.key] === 'active');
-    if (idx === -1) return;
-    p.statuses[pipelineSteps[idx].key] = 'complete';
-    const nextIdx = pipelineSteps.slice(idx + 1).findIndex(s => p.statuses[s.key] !== 'complete');
-    if (nextIdx !== -1) {
-      (Object.keys(p.statuses) as StepKey[]).forEach(k => p.statuses[k] = p.statuses[k] === 'complete' ? 'complete' : 'pending');
-      p.statuses[pipelineSteps[idx + 1 + nextIdx].key] = 'active';
+
+  // Helper function to determine if this is a V2 pipeline
+  function isV2Pipeline(pipeline: Pipeline | PipelineV2): boolean {
+    if ('statuses' in pipeline && pipeline.statuses) {
+      const statuses = pipeline.statuses as any;
+      // Check if it has V2-specific status keys
+      return !!(statuses.intake || statuses.jd || statuses.profile || statuses.gaps);
     }
-    savePipelines();
+    return false;
   }
-  function resetPipeline() {
-    const p = getActivePipeline();
-    if (!p) return;
-    p.statuses = defaultStatuses();
-    savePipelines();
-  }
-  function newPipeline() {
-    const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    const name = `Pipeline ${pipelines.length + 1}`;
-    const p: PipelineInstance = { id, name, createdAt: Date.now(), statuses: defaultStatuses() };
-    pipelines = [p, ...pipelines];
-    setActivePipeline(id);
-    savePipelines();
-  }
-  function progressOf(statuses: Record<StepKey, StepStatus>) {
-    const completed = pipelineSteps.filter(s => statuses[s.key] === 'complete').length;
+
+  function progressOf(pipeline: Pipeline | PipelineV2) {
+    const completed = pipelineSteps.filter(s => getStepStatus(pipeline, s.key) === 'complete').length;
     const total = pipelineSteps.length;
     const percent = Math.round((completed / total) * 100);
     return { completed, total, percent };
   }
-
-  // Derive top 3 most recent pipelines
-  $: recentPipelines = pipelines.length ? [...pipelines].sort((a,b) => b.createdAt - a.createdAt).slice(0,3) : [];
 
   onMount(async () => {
     try {
@@ -232,14 +230,8 @@
   loadQuickTasksOrder();
   regroupRecent();
 
-  // Pipelines initialize
-  loadPipelines();
-  // Apply heuristics to the active pipeline only
-  const ap = getActivePipeline();
-  if (ap) {
-    applyAutoCompletionFromSignals(ap.statuses);
-    savePipelines();
-  }
+  // Load real pipelines from API
+  await loadPipelines();
 
     loading = false;
   });
@@ -298,44 +290,32 @@
       </div>
     </div>
     {#if pipelinesExpanded}
-      {#if recentPipelines.length}
-        <div class="grid gap-3">
+      {#if pipelinesError}
+        <div class="text-sm text-red-600 dark:text-red-400">
+          Failed to load pipelines: {pipelinesError}
+        </div>
+      {:else if recentPipelines.length}
+        <div class="space-y-1">
           {#each recentPipelines as p (p.id)}
-            <div class="border rounded-lg p-3 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-              <div class="flex items-center justify-between mb-1">
-                <div class="font-medium truncate">{p.name}</div>
-              </div>
-              <div class="mt-2 flex items-center gap-3">
-                <div class="flex items-center gap-2 flex-1 flex-wrap overflow-visible whitespace-normal pr-1">
-                  {#each pipelineSteps as s, i (s.key)}
-                    {@const st = p.statuses[s.key]}
-                    <div class="relative group">
-                      <div class={`whitespace-nowrap inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full border text-xs transition cursor-default select-none ${st === 'complete' ? 'border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300 bg-emerald-50/40 dark:bg-emerald-900/20' : st === 'active' ? 'border-indigo-300 text-indigo-700 dark:border-indigo-700 dark:text-indigo-300 bg-indigo-50/40 dark:bg-indigo-900/20' : 'border-slate-200 text-gray-700 dark:border-slate-700 dark:text-gray-200'} hover:bg-gray-50/70 dark:hover:bg-slate-700/40`}>
-                        <span class={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[11px] ${st === 'complete' ? 'bg-emerald-600 text-white' : st === 'active' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-gray-300'}`}>{i+1}</span>
-                        <span class="font-medium">{s.label}</span>
-                      </div>
-                      <!-- Hover card (hover-only info, non-clickable) -->
-                      <div class="absolute left-0 top-full mt-2 z-30 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition min-w-[220px] max-w-[280px] p-3 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow pointer-events-none">
-                        <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Step {i+1}</div>
-                        <div class="font-medium mb-1">{s.label}</div>
-                        <div class="text-sm text-gray-700 dark:text-gray-200">{s.desc}</div>
-                        <div class="mt-2"><span class={`text-[10px] px-1.5 py-0.5 rounded ${st === 'complete' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : st === 'active' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300'}`}>{st === 'complete' ? 'Complete' : st === 'active' ? 'In progress' : 'Pending'}</span></div>
-                      </div>
-                    </div>
-                    {#if i < pipelineSteps.length - 1}
-                      <span class="text-gray-400 dark:text-gray-500"><Icon name="arrow-right" size={14}/></span>
-                    {/if}
-                  {/each}
+            <div class="border rounded p-2 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+              <div class="flex items-center gap-2 text-sm">
+                <div class="font-medium truncate min-w-0 flex-shrink">{p.name}</div>
+                {#if p.company}
+                  <div class="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">• {p.company}</div>
+                {/if}
+                <div class="flex-1 h-1.5 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden mx-2">
+                  <div class="h-full bg-indigo-600" style="width: {progressOf(p).percent}%"></div>
                 </div>
-                <div class="text-xs text-gray-500 dark:text-gray-400 select-none">
-                  Hover a step to see details
-                </div>
+                <div class="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">{progressOf(p).percent}%</div>
               </div>
             </div>
           {/each}
         </div>
       {:else}
-        <div class="text-sm text-gray-600 dark:text-gray-400">No pipelines yet.</div>
+        <div class="text-sm text-gray-600 dark:text-gray-400">
+          No pipelines yet. 
+          <a href="/app/pipelines" class="text-blue-600 hover:underline">Create your first pipeline</a>.
+        </div>
       {/if}
     {/if}
   </div>

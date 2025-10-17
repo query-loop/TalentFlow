@@ -1,0 +1,11 @@
+{
+  "$id": "https://talentflow.dev/schemas/ats_request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ATSRequest",
+  "type": "object",
+  "properties": {
+    "jdId": { "type": "string" },
+    "resumeId": { "type": "string" },
+    "text": { "type": "string" }
+  }
+}

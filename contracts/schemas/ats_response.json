@@ -1,0 +1,11 @@
+{
+  "$id": "https://talentflow.dev/schemas/ats_response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ATSResponse",
+  "type": "object",
+  "properties": {
+    "score": { "type": "number" },
+    "reasons": { "type": "array", "items": { "type": "string" } },
+    "sections": { "type": "object", "additionalProperties": { "type": "string" } }
+  }
+}

@@ -1,10 +1,27 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
+   import StepFooter from '$lib/components/StepFooter.svelte';
+  import { onMount } from 'svelte';
+  import { getPipeline, type Pipeline } from '$lib/pipelines';
+  import { getActivePipelineId } from '$lib/pipelineTracker';
   let text = '';
   let loading = false;
   let score: number | null = null;
   let tips: string[] = [];
   let err = '';
+
+  // Active pipeline for header context
+  let activePipeline: Pipeline | null = null;
+  let pipelineHeaderName = '';
+  onMount(async () => {
+    try {
+      const pid = getActivePipelineId();
+      if (pid) {
+        activePipeline = await getPipeline(pid);
+        pipelineHeaderName = (activePipeline?.name || activePipeline?.company || '').trim();
+      }
+    } catch {}
+  });
 
   async function run() {
     err = '';
@@ -24,7 +41,12 @@
 </script>
 
 <section class="space-y-4">
-  <h1 class="text-xl font-semibold flex items-center gap-2"><Icon name="shield-check"/> ATS Score</h1>
+  <h1 class="text-xl font-semibold flex items-center gap-2">
+    <Icon name="shield-check"/> ATS Score
+    {#if pipelineHeaderName}
+      <span class="text-sm text-gray-500">— {pipelineHeaderName}</span>
+    {/if}
+  </h1>
   <p class="text-sm text-gray-600 dark:text-gray-300">Paste your resume or job description to check ATS compatibility.</p>
   <textarea class="border rounded p-2 min-h-[160px] w-full bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-gray-800 dark:text-gray-100" bind:value={text} placeholder="Paste resume or JD..."></textarea>
   <div class="flex items-center gap-2">
@@ -32,6 +54,7 @@
       {loading ? 'Checking…' : 'Check ATS'}
     </button>
   </div>
+  <StepFooter current="ats" />
 
   {#if err}
     <div class="text-sm text-red-700 dark:text-red-400">{err}</div>

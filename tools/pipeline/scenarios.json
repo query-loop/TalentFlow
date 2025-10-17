@@ -1,0 +1,46 @@
+{
+  "scenarios": [
+    {
+      "id": "local_jsonld_sample",
+      "description": "Parse embedded JSON-LD JobPosting from local HTML file",
+      "mode": "from-html",
+      "url": "https://example.com/jobs/123",
+      "html_file": "fixtures/sample_jsonld.html",
+      "expect": {
+        "title": "Software Engineer",
+        "company": "Meta"
+      }
+    },
+    {
+      "id": "greenhouse_fixture",
+      "description": "Parse Greenhouse-like HTML with profiles",
+      "mode": "from-html",
+      "url": "https://boards.greenhouse.io/acme/jobs/123",
+      "html_file": "fixtures/greenhouse_sample.html",
+      "expect": {
+        "title_contains": "Engineer",
+        "company": "Acme Corp"
+      }
+    },
+    {
+      "id": "meta_careers_live",
+      "description": "Fetch Meta Careers job page via proxy and extract on backend",
+      "mode": "proxy+from-html",
+      "url": "https://www.metacareers.com/jobs/1436181490732782",
+      "expect": {
+        "title_contains": "Engineer",
+        "company_fallback": "Meta"
+      }
+    },
+    {
+      "id": "meta_careers_direct",
+      "description": "Backend direct fetch and extract (no proxy) for Meta Careers",
+      "mode": "backend-job",
+      "url": "https://www.metacareers.com/jobs/1436181490732782",
+      "expect": {
+        "title_contains": "Engineer",
+        "company_fallback": "Meta"
+      }
+    }
+  ]
+}
