@@ -19,6 +19,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Runtime/PID files
+.run/
+*.pid
+
 # Ktor / Gradle
 .gradle/
 **/build/
