@@ -1,9 +1,13 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
-const HMR_HOST = process.env.HMR_HOST; // optional explicit hostname
-const HMR_CLIENT_PORT = process.env.HMR_CLIENT_PORT ? Number(process.env.HMR_CLIENT_PORT) : undefined;
-const HMR_PROTOCOL = process.env.HMR_PROTOCOL || 'ws';
+// Auto-detect GitHub Codespaces environment
+const isCodespaces = process.env.CODESPACE_NAME !== undefined;
+
+// Set defaults for Codespaces if not explicitly configured
+const HMR_HOST = process.env.HMR_HOST || (isCodespaces ? process.env.CODESPACE_NAME + '-5173.app.github.dev' : undefined);
+const HMR_CLIENT_PORT = process.env.HMR_CLIENT_PORT ? Number(process.env.HMR_CLIENT_PORT) : (isCodespaces ? 443 : undefined);
+const HMR_PROTOCOL = process.env.HMR_PROTOCOL || (isCodespaces ? 'wss' : 'ws');
 
 export default defineConfig({
   plugins: [sveltekit()],

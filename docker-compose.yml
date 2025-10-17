@@ -88,7 +88,12 @@ services:
       - ./frontend:/app
     environment:
       - BACKEND_BASE=http://server:8080
-      # HMR defaults to ws and no clientPort override; set HMR_PROTOCOL=wss and HMR_CLIENT_PORT=5174 when using Codespaces
+      # Pass Codespaces environment variable so Vite can auto-detect
+      - CODESPACE_NAME=${CODESPACE_NAME:-}
+      # HMR will auto-configure for Codespaces; override with HMR_* env vars if needed
+      - HMR_PROTOCOL=${HMR_PROTOCOL:-}
+      - HMR_HOST=${HMR_HOST:-}
+      - HMR_CLIENT_PORT=${HMR_CLIENT_PORT:-}
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     ports:
       - "5174:5173"

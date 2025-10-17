@@ -18,6 +18,15 @@ log() { echo "[dev] $*"; }
 # If using Turso/libsql remotely and you want to avoid local SQLite fallback,
 # set DATABASE_URL=libsql://... and DATABASE_REQUIRE_REMOTE=1 in your .env
 
+# Auto-detect GitHub Codespaces and configure HMR if not already set
+if [ -n "${CODESPACE_NAME:-}" ]; then
+  log "Detected GitHub Codespaces environment"
+  export HMR_PROTOCOL="${HMR_PROTOCOL:-wss}"
+  export HMR_HOST="${HMR_HOST:-${CODESPACE_NAME}-5173.app.github.dev}"
+  export HMR_CLIENT_PORT="${HMR_CLIENT_PORT:-443}"
+  log "HMR configured for Codespaces: protocol=$HMR_PROTOCOL, host=$HMR_HOST, port=$HMR_CLIENT_PORT"
+fi
+
 
 # Clean previous processes and free ports
 if [ -f "$RUN_DIR/backend.pid" ] || [ -f "$RUN_DIR/frontend.pid" ]; then
