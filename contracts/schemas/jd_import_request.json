@@ -1,0 +1,10 @@
+{
+  "$id": "https://talentflow.dev/schemas/jd_import_request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JDImportRequest",
+  "type": "object",
+  "required": ["url"],
+  "properties": {
+    "url": { "type": "string", "format": "uri" }
+  }
+}

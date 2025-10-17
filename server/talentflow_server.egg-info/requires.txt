@@ -1,0 +1,10 @@
+fastapi<1.0,>=0.111
+uvicorn[standard]<1.0,>=0.29
+pydantic<3.0,>=2.6
+jsonschema<5,>=4.22
+sqlalchemy<3.0,>=2.0
+cachetools>=5.3
+aiohttp>=3.8
+
+[dev]
+pytest>=7.0

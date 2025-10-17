@@ -24,6 +24,7 @@ stop_pid() {
 
 stop_pid backend
 stop_pid frontend
+stop_pid worker
 
 # Also free common ports just in case
 fuser -k 8080/tcp >/dev/null 2>&1 || true

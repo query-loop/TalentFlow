@@ -2,33 +2,75 @@
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
 RUN_DIR="$ROOT_DIR/.run"
-BACKEND_DIR="$ROOT_DIR/backend"
+PY_BACKEND_DIR="$ROOT_DIR/server"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 mkdir -p "$RUN_DIR"
 
+# Load environment from .env if present (not committed)
+if [ -f "$ROOT_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT_DIR/.env"
+  set +a
+fi
+
 log() { echo "[dev] $*"; }
+# If using Turso/libsql remotely and you want to avoid local SQLite fallback,
+# set DATABASE_URL=libsql://... and DATABASE_REQUIRE_REMOTE=1 in your .env
+
+# Auto-detect GitHub Codespaces and configure HMR if not already set
+if [ -n "${CODESPACE_NAME:-}" ]; then
+  log "Detected GitHub Codespaces environment"
+  export HMR_PROTOCOL="${HMR_PROTOCOL:-wss}"
+  export HMR_HOST="${HMR_HOST:-${CODESPACE_NAME}-5173.app.github.dev}"
+  export HMR_CLIENT_PORT="${HMR_CLIENT_PORT:-443}"
+  log "HMR configured for Codespaces: protocol=$HMR_PROTOCOL, host=$HMR_HOST, port=$HMR_CLIENT_PORT"
+fi
+
 
 # Clean previous processes and free ports
 if [ -f "$RUN_DIR/backend.pid" ] || [ -f "$RUN_DIR/frontend.pid" ]; then
   bash "$ROOT_DIR/scripts/dev-down.sh" || true
 fi
-fuser -k 8080/tcp >/dev/null 2>&1 || true
 fuser -k 5173/tcp >/dev/null 2>&1 || true
 
-# Start backend in background
-log "Starting backend (Ktor) on :8080..."
-if [ ! -x "$BACKEND_DIR/gradlew" ]; then
-  (cd "$BACKEND_DIR" && gradle wrapper)
+# Pick backend port (prefer 8081; fallback to 8082 if occupied)
+BACKEND_PORT=${BACKEND_PORT:-}
+if [ -z "$BACKEND_PORT" ]; then
+  if ss -ltn "sport = :8081" | grep -q ":8081"; then
+    BACKEND_PORT=8082
+  else
+    BACKEND_PORT=8081
+  fi
 fi
-nohup bash -lc "cd '$BACKEND_DIR' && ./gradlew run" \
+
+# If we own a previous backend on the chosen port, kill it
+if [ -f "$RUN_DIR/backend.pid" ]; then
+  fuser -k "$BACKEND_PORT"/tcp >/dev/null 2>&1 || true
+fi
+
+# Start worker (Redis queue consumer) in background if REDIS_URL is configured
+if [ -n "${REDIS_URL:-}" ]; then
+  log "Starting worker (Redis consumer)..."
+  nohup bash -lc "cd '$PY_BACKEND_DIR' && REDIS_URL='$REDIS_URL' python -m app.worker" \
+    >"$RUN_DIR/worker.log" 2>&1 &
+  echo $! > "$RUN_DIR/worker.pid"
+else
+  log "REDIS_URL not set; worker not started. Set REDIS_URL=redis://localhost:6379/0 to enable."
+fi
+
+# Start backend (FastAPI) in background
+log "Starting backend (FastAPI) on :$BACKEND_PORT..."
+python -m pip install -q -e "$PY_BACKEND_DIR" >/dev/null 2>&1 || true
+nohup bash -lc "cd '$PY_BACKEND_DIR' && python -m uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT" \
   >"$RUN_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > "$RUN_DIR/backend.pid"
 
 # Wait for backend health (up to ~120s)
 for i in {1..240}; do
-  if curl -sSf http://localhost:8080/api/health >/dev/null 2>&1; then
-    log "Backend is up (http://localhost:8080)"
+  if curl -sSf http://localhost:$BACKEND_PORT/api/health >/dev/null 2>&1; then
+    log "Backend is up (http://localhost:$BACKEND_PORT)"
     break
   fi
   sleep 0.5
@@ -43,8 +85,8 @@ for i in {1..240}; do
 done
 
 # Start frontend in background
-export BACKEND_BASE=${BACKEND_BASE:-http://localhost:8080}
-export PUBLIC_API_BASE=${PUBLIC_API_BASE:-$BACKEND_BASE}
+export BACKEND_BASE=${BACKEND_BASE:-http://localhost:$BACKEND_PORT}
+# Do not set PUBLIC_API_BASE by default; let the app use relative URLs + Vite proxy in dev
 log "Starting frontend (SvelteKit) on :5173 with BACKEND_BASE=$BACKEND_BASE..."
 if [ "${SKIP_NPM_INSTALL:-0}" != "1" ]; then
   (cd "$FRONTEND_DIR" && npm install)
@@ -71,6 +113,9 @@ for i in {1..60}; do
 done
 
 log "Both apps started in background."
-log " - Backend:  http://localhost:8080 (health: /api/health, resume: /resume)"
+if [ -f "$RUN_DIR/worker.pid" ]; then
+  log " - Worker:   running (see $RUN_DIR/worker.log)"
+fi
+log " - Backend:  http://localhost:$BACKEND_PORT (health: /api/health)"
 log " - Frontend: http://localhost:5173"
 log "Logs: tail -f $RUN_DIR/backend.log $RUN_DIR/frontend.log"

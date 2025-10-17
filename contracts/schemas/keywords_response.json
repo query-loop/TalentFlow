@@ -1,0 +1,12 @@
+{
+  "$id": "https://talentflow.dev/schemas/keywords_response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KeywordsResponse",
+  "type": "object",
+  "properties": {
+    "present": { "type": "array", "items": { "type": "string" } },
+    "missing": { "type": "array", "items": { "type": "string" } },
+    "weak": { "type": "array", "items": { "type": "string" } },
+    "counts": { "type": "object", "additionalProperties": { "type": "integer" } }
+  }
+}

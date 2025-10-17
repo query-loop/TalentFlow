@@ -18,27 +18,31 @@
   let reducedMotion = false;
   let rafId = 0;
 
+  // Primary entry points
   const workflows = [
-  { href: '/app/extract', label: 'Extract', desc: 'Parse JDs per company/role', icon: 'tag' },
-    { href: '/app/generate', label: 'Generate', desc: 'Create tailored resumes per job', icon: 'sparkles' },
-    { href: '/app/ats', label: 'ATS Score', desc: 'Scan and get improvement tips', icon: 'shield-check' },
-    { href: '/app/keywords', label: 'Keywords', desc: 'Analyze JD and resume terms', icon: 'tag' },
-  { href: '/app/themes', label: 'Themes', desc: 'Choose formatting styles', icon: 'palette' },
-  { href: '/app/pipelines', label: 'Pipelines', desc: 'All curation pipelines', icon: 'layers' }
-  ] as const;
-
-  const resources = [
-  { href: '/app/companies', label: 'Companies', desc: 'Where you’re a strong match', icon: 'building' },
+    { href: '/app/pipelines', label: 'Pipelines', desc: 'All curation pipelines', icon: 'layers' },
     { href: '/app/library', label: 'Library', desc: 'Saved resumes & drafts', icon: 'folder' },
     { href: '/app/templates', label: 'Templates', desc: 'Reusable layouts', icon: 'layers' },
+  ] as const;
+
+  // Pipeline steps (removed Themes option per requested UI change)
+  const pipeline = [
+    { href: '/app/extract', label: 'Extract', desc: 'Parse JDs per company/role', icon: 'tag' },
+    { href: '/app/generate', label: 'Generate', desc: 'Create tailored resumes per job', icon: 'sparkles' },
+    { href: '/app/keywords', label: 'Keywords', desc: 'Analyze JD and resume terms', icon: 'tag' },
+    { href: '/app/ats', label: 'ATS Score', desc: 'Scan and get improvement tips', icon: 'shield-check' }
+  ] as const;
+
+  // Secondary resources
+  const resources = [
+    { href: '/app/companies', label: 'Companies', desc: 'Where you’re a strong match', icon: 'building' },
     { href: '/app/history', label: 'History', desc: 'Recent actions', icon: 'clock' },
     { href: '/app/integrations', label: 'Integrations', desc: 'Connect ATS & boards', icon: 'plug' },
-    { href: '/app/settings', label: 'Settings', desc: 'Preferences & defaults', icon: 'gear' },
     { href: '/app/help', label: 'Help', desc: 'Guides & FAQs', icon: 'info' }
   ] as const;
 
   onMount(() => {
-    // No theme management; default light styles
+  // Theme initialization removed (theme toggle no longer available)
 
     // Respect prefers-reduced-motion and set up spotlight tracker
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -97,22 +101,29 @@
   <div aria-hidden="true" class="absolute inset-0 bg-spotlight opacity-70 md:opacity-60" style={`--spot-x: ${spotlightX}%; --spot-y: ${spotlightY}%;`}></div>
   </div>
   <!-- Top bar -->
-  <header class="sticky top-0 z-20 border-b bg-white/90 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 backdrop-blur">
-    <div class="mx-auto max-w-7xl px-4 py-3 flex items-center gap-4 justify-between">
-      <div class="flex items-center gap-3">
-        <button class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700" aria-label="Open sidebar" on:click={() => (sidebarOpen = true)}>
+  <header class="sticky top-0 z-20 border-b bg-white/85 dark:bg-slate-900/85 border-slate-200 dark:border-slate-800 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 py-2.5 flex items-center gap-4 justify-between">
+      <div class="flex items-center gap-2.5">
+        <button class="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700" aria-label="Open sidebar" on:click={() => (sidebarOpen = true)}>
           ☰
         </button>
-        <a href="/" class="font-semibold">TalentFlow</a>
-        <span class="text-gray-400">/</span>
-        <span class="text-gray-600">Dashboard</span>
+        <a href="/" class="font-semibold tracking-tight">TalentFlow</a>
       </div>
-  <div></div>
+      <div class="flex items-center gap-2">
+        <!-- Theme toggle removed as requested -->
+      </div>
     </div>
   </header>
 
   <!-- Backdrop -->
-  <div class={sidebarOpen ? 'fixed inset-0 bg-black/40 z-30' : 'hidden'} on:click={() => (sidebarOpen = false)}></div>
+  <div
+    class={sidebarOpen ? 'fixed inset-0 bg-black/40 z-30' : 'hidden'}
+    role="button"
+    aria-label="Close sidebar"
+    tabindex="0"
+    on:click={() => (sidebarOpen = false)}
+    on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sidebarOpen = false; } }}
+  ></div>
 
   <!-- Full-page sidebar overlay with grouped sections and descriptions -->
   <aside class={`fixed inset-0 z-40 bg-white dark:bg-slate-800 overflow-y-auto transform transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} aria-hidden={!sidebarOpen}>
@@ -146,6 +157,25 @@
         </section>
 
         <section>
+          <div class="px-1 mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">Pipeline</div>
+          <ul class="grid md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {#each pipeline as item}
+              <li>
+                <a href={item.href}
+                   on:click={() => (sidebarOpen = false)}
+                   class="flex items-start gap-3 border border-slate-200 dark:border-slate-700 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-slate-700 transition">
+                  <div class="mt-0.5"><Icon name={item.icon as any} /></div>
+                  <div>
+                    <div class="font-medium">{item.label}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{item.desc}</div>
+                  </div>
+                </a>
+              </li>
+            {/each}
+          </ul>
+        </section>
+
+        <section>
           <div class="px-1 mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">Resources</div>
           <ul class="grid md:grid-cols-2 lg:grid-cols-3 gap-2">
             {#each resources as item}
@@ -163,6 +193,23 @@
             {/each}
           </ul>
         </section>
+
+        <section>
+          <div class="px-1 mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">Settings</div>
+          <ul class="grid md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <li>
+              <a href="/app/settings"
+                 on:click={() => (sidebarOpen = false)}
+                 class="flex items-start gap-3 border border-slate-200 dark:border-slate-700 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-slate-700 transition">
+                <div class="mt-0.5"><Icon name={'gear' as any} /></div>
+                <div>
+                  <div class="font-medium">Settings</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">Preferences & defaults</div>
+                </div>
+              </a>
+            </li>
+          </ul>
+        </section>
       </div>
     </div>
   </aside>
@@ -174,8 +221,8 @@
     </main>
   </div>
 
-  <!-- Floating Support Chat -->
-  <div class="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
+  <!-- Floating Support Chat (moved to bottom-left) -->
+  <div class="fixed bottom-4 left-4 z-50 flex flex-col items-start gap-2">
     {#if chatOpen}
       <div class="w-80 max-w-[92vw] border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 shadow-xl">
         <div class="px-3 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">

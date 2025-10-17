@@ -1,0 +1,13 @@
+{
+  "$id": "https://talentflow.dev/schemas/pipeline_create.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PipelineCreate",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": { "type": "string" },
+    "company": { "type": ["string", "null"] },
+    "jdId": { "type": ["string", "null"] },
+    "resumeId": { "type": ["string", "null"] }
+  }
+}
