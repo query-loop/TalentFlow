@@ -1,0 +1,196 @@
+openapi: 3.1.0
+info:
+  title: TalentFlow API
+  version: 0.1.0
+  description: API contracts for JD pipelines, generation, keywords, ATS, and exports.
+servers:
+  - url: http://localhost:8080
+    description: Local dev
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/jd/import:
+    post:
+      summary: Import a Job Description by URL (server-side fetch with SSRF guard)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/jd_import_request.json'
+      responses:
+        '201':
+          description: JD imported
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/jd.json'
+
+  /api/jd/{id}/extract:
+    post:
+      summary: Extract structured data and build reference from a JD
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Extracted JD
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/extracted_jd.json'
+
+  /api/generate:
+    post:
+      summary: Generate a tailored resume draft using a JD reference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/generate_request.json'
+      responses:
+        '200':
+          description: Draft generated
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/generate_response.json'
+
+  /api/generate/stream:
+    post:
+      summary: Stream resume draft generation via SSE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/generate_request.json'
+      responses:
+        '200':
+          description: Event stream with partial results
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream. Each event `data:` is a JSON matching parts of GenerateResponse.
+
+  /api/keywords:
+    post:
+      summary: Analyze keyword coverage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/keywords_request.json'
+      responses:
+        '200':
+          description: Keyword analysis
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/keywords_response.json'
+
+  /api/ats:
+    post:
+      summary: Compute ATS score and suggestions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/ats_request.json'
+      responses:
+        '200':
+          description: ATS score
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/ats_response.json'
+
+  /api/pipelines:
+    get:
+      summary: List pipelines
+      responses:
+        '200':
+          description: Pipelines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: './schemas/pipeline.json'
+    post:
+      summary: Create pipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/pipeline_create.json'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/pipeline.json'
+
+  /api/pipelines/{id}:
+    get:
+      summary: Get pipeline
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pipeline
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/pipeline.json'
+    patch:
+      summary: Update pipeline statuses or metadata
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/pipeline_patch.json'
+      responses:
+        '200':
+          description: Updated pipeline
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/pipeline.json'
+
+components:
+  securitySchemes: {}
+  # Schemas are referenced from external JSON schema files in ./schemas

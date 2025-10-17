@@ -1,10 +1,10 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
   import { onMount } from 'svelte';
+  import { listPipelines, createPipeline, deletePipeline, type Pipeline } from '$lib/pipelines';
 
-  type StepStatus = 'pending' | 'active' | 'complete';
+  type StepStatus = 'pending' | 'active' | 'complete' | 'failed';
   type StepKey = 'extract' | 'generate' | 'keywords' | 'ats' | 'export' | 'save';
-  type PipelineInstance = { id: string; name: string; createdAt: number; statuses: Record<StepKey, StepStatus> };
 
   const steps = [
     { key: 'extract' as const,  label: 'Extract JD' },
@@ -15,19 +15,27 @@
     { key: 'save' as const,     label: 'Save' }
   ];
 
-  let pipelines: PipelineInstance[] = [];
+  let pipelines: Pipeline[] = [];
   let loading = true;
+  let error: string | null = null;
+  let creating = false;
+  let showModal = false;
+  let form: { name: string; company?: string; jdId: string; resumeId: string } = { name: '', company: '', jdId: '', resumeId: '' };
 
-  onMount(() => {
+  async function load() {
+    loading = true; error = null;
     try {
-      const raw = localStorage.getItem('tf_pipelines');
-      pipelines = raw ? JSON.parse(raw) : [];
-      pipelines.sort((a,b) => b.createdAt - a.createdAt);
-    } catch { pipelines = []; }
-    loading = false;
-  });
+      pipelines = await listPipelines();
+    } catch (e: any) {
+      error = e?.message || 'Failed to load pipelines';
+    } finally {
+      loading = false;
+    }
+  }
 
-  function percent(p: PipelineInstance) {
+  onMount(() => { load(); });
+
+  function percent(p: Pipeline) {
     const total = steps.length;
     const done = steps.filter(s => p.statuses[s.key] === 'complete').length;
     return Math.round((done / Math.max(total, 1)) * 100);
@@ -36,9 +44,19 @@
 
 <section class="space-y-4">
   <div class="flex items-center justify-between">
-    <h1 class="text-xl font-semibold flex items-center gap-2"><Icon name="layers" /> All pipelines</h1>
-    <a href="/app" class="text-sm text-blue-600 hover:underline">Back to dashboard</a>
+  <h1 class="text-xl font-semibold flex items-center gap-2"><Icon name="layers" /> All pipelines</h1>
+    <button
+      on:click={() => { showModal = true; form = { name: '', company: '', jdId: '', resumeId: '' }; }}
+      class="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-md backdrop-blur-sm bg-white/40 dark:bg-white/10 border border-white/50 dark:border-white/10 text-gray-800 dark:text-gray-100 shadow-sm hover:bg-white/60 dark:hover:bg-white/20 transition disabled:opacity-60"
+      disabled={creating}
+    >
+      <Icon name="plus" size={16} /> New pipeline
+    </button>
   </div>
+
+  {#if error}
+    <div class="text-sm text-red-600">{error}</div>
+  {/if}
 
   {#if loading}
     <div>Loading…</div>
@@ -47,7 +65,7 @@
   {:else}
     <ul class="grid gap-3">
       {#each pipelines as p}
-        <li class="border rounded-lg p-3 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+        <li class="relative border rounded-lg p-3 bg-white/80 backdrop-blur-sm dark:bg-slate-800/70 border-slate-200 dark:border-slate-700">
           <div class="flex items-center justify-between mb-2">
             <div class="font-medium truncate">{p.name}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{new Date(p.createdAt).toLocaleString()}</div>
@@ -67,11 +85,63 @@
             </div>
             <div class="flex items-center gap-3">
               <div class="text-xs text-gray-500 dark:text-gray-400">{percent(p)}%</div>
-              <a href={`/app/pipeline/${p.id}`} class="inline-flex items-center text-sm px-3 py-1.5 rounded-none bg-blue-600 text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 font-medium shadow-sm transition">View</a>
+              <a
+                href={`/app/pipeline/${p.id}`}
+                class="inline-flex items-center text-sm px-3 py-1.5 rounded-md backdrop-blur-sm bg-white/40 dark:bg-white/10 border border-white/50 dark:border-white/10 text-gray-800 dark:text-gray-100 shadow-sm hover:bg-white/60 dark:hover:bg-white/20 transition"
+              >View</a>
+              <button
+                class="inline-flex items-center justify-center w-8 h-8 rounded-md backdrop-blur-sm bg-white/40 dark:bg-white/10 border border-white/50 dark:border-white/10 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-white/60 dark:hover:bg-white/20"
+                on:click={async ()=>{ if (confirm('Delete this pipeline?')) { await deletePipeline(p.id); await load(); } }}
+                title="Delete"
+              >
+                <Icon name="trash" size={16} />
+              </button>
             </div>
           </div>
         </li>
       {/each}
     </ul>
+  {/if}
+
+  {#if showModal}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" on:click={() => showModal=false}>
+      <div class="bg-white dark:bg-slate-900 rounded-lg shadow-xl w-full max-w-md p-5" on:click|stopPropagation>
+        <div class="text-lg font-semibold mb-4">Create pipeline</div>
+        <form on:submit|preventDefault={async () => {
+          creating = true; error = null;
+          try {
+            const payload: any = { name: form.name.trim() };
+            if (form.jdId.trim()) payload.jdId = form.jdId.trim();
+            if (form.resumeId.trim()) payload.resumeId = form.resumeId.trim();
+            const created = await createPipeline(payload);
+            showModal = false;
+            window.location.href = `/app/pipeline/${created.id}`;
+          } catch (e: any) {
+            error = e?.message || 'Failed to create pipeline';
+          } finally {
+            creating = false;
+          }
+        }} class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Name <span class="text-red-600">*</span></label>
+            <input bind:value={form.name} required class="w-full border rounded px-3 py-2 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700" placeholder="e.g. Backend Engineer at Acme" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1">JD ID</label>
+              <input bind:value={form.jdId} class="w-full border rounded px-3 py-2 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700" placeholder="Optional" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Resume ID</label>
+              <input bind:value={form.resumeId} class="w-full border rounded px-3 py-2 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700" placeholder="Optional" />
+            </div>
+          </div>
+          <div class="flex items-center justify-end gap-2 pt-2">
+            <button type="button" class="px-3 py-1.5 border rounded" on:click={() => showModal=false}>Cancel</button>
+            <button type="submit" class="px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-60" disabled={creating || !form.name.trim()}>Create</button>
+          </div>
+        </form>
+      </div>
+    </div>
   {/if}
 </section>

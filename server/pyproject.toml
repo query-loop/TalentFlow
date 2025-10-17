@@ -1,0 +1,23 @@
+[project]
+name = "talentflow-server"
+version = "0.1.0"
+description = "TalentFlow API (contracts-first scaffolding)"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.111,<1.0",
+  "uvicorn[standard]>=0.29,<1.0",
+  "pydantic>=2.6,<3.0",
+  "jsonschema>=4.22,<5",
+  "sqlalchemy>=2.0,<3.0",
+  "cachetools>=5.3",
+  "aiohttp>=3.8"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.uvicorn]
+factory = false
+host = "0.0.0.0"
+port = 8080
+reload = true

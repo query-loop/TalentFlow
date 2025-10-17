@@ -1,0 +1,12 @@
+{
+  "$id": "https://talentflow.dev/schemas/keywords_request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KeywordsRequest",
+  "type": "object",
+  "required": ["jdId"],
+  "properties": {
+    "jdId": { "type": "string" },
+    "resumeId": { "type": "string" },
+    "text": { "type": "string" }
+  }
+}

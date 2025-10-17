@@ -1,18 +1,162 @@
-version: "3.9"
 services:
-  backend:
-    build: ./backend
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "8081:8080"
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  server:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./server:/app
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      # IP rotation configuration
+      - IP_ROTATION_STRATEGY=mixed  # direct, free_proxy, tor, mixed, aggressive
+      - IP_ROTATION_INTERVAL=5      # Rotate every N requests
+      - TOR_HOST=tor
+      - TOR_SOCKS_PORT=9150
+      - TOR_CONTROL_PORT=9151
+      - TOR_PASSWORD=mypassword
+      # Optional: Add proxy URLs (comma/space separated)
+      # - PROXY_URLS=http://user:pass@proxy1:port http://user:pass@proxy2:port
+      # Optional: Browser automation settings
+      # - SELENIUM_HEADLESS=1
+      # - CHROME_NO_SANDBOX=1
+      # Optional: Tor password if using control
+      # - TOR_PASSWORD=your_tor_password
+      - CHROMA_SERVER_URL=http://chroma:8000
+    command: bash -lc "pip install -U pip && pip install -e . && uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload"
+    ports:
+      - "9002:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+
+  worker:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./server:/app
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      # Same IP rotation config as server
+      - IP_ROTATION_STRATEGY=tor
+      - IP_ROTATION_INTERVAL=3
+      - TOR_HOST=tor
+      - TOR_SOCKS_PORT=9150
+      - TOR_CONTROL_PORT=9151
+      - TOR_PASSWORD=mypassword
+      # Optional: Enable browser automation fallback
+      # - BROWSER_AUTOMATION_FALLBACK=1
+    command: bash -c "pip install -U pip && echo 'Installing dependencies...' && pip install httpx redis beautifulsoup4 lxml selenium undetected-chromedriver chromedriver-autoinstaller && echo 'Dependencies installed, starting worker...' && python -m app.worker"
+    depends_on:
+      redis:
+        condition: service_healthy
+      server:
+        condition: service_started
+      tor:
+        condition: service_started
+      minio:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+
+  tor:
+    image: peterdavehello/tor-socks-proxy:latest
+    environment:
+      - PASSWORD=mypassword
+    ports:
+      - "9050:9150"  # SOCKS5 proxy
+      - "9051:9151"  # Control port
+    restart: unless-stopped
+
   frontend:
     image: node:20-alpine
     working_dir: /app
     volumes:
       - ./frontend:/app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     environment:
-      - PUBLIC_API_BASE=http://localhost:8081
+      - BACKEND_BASE=http://server:8080
+      # HMR defaults to ws and no clientPort override; set HMR_PROTOCOL=wss and HMR_CLIENT_PORT=5174 when using Codespaces
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     ports:
-      - "5173:5173"
+      - "5174:5173"
     depends_on:
-      - backend
+      server:
+        condition: service_started
+
+  # MinIO object storage for raw documents (resumes, JDs, artifacts)
+  minio:
+    image: minio/minio:latest
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - minio_data:/data
+
+  # Chroma vector DB (server mode). Uses default HTTP API port 8000.
+  chroma:
+    image: chromadb/chroma:1.1.2.dev63
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_BIND=0.0.0.0
+    # Note: default chroma image may not include curl; omit healthcheck to avoid false unhealthy status
+
+  # Dedicated Celery worker (uses the same codebase as worker/server but runs Celery)
+  celery_worker:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./server:/app
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    command: bash -lc "pip install -U pip && pip install -e . && celery -A app.celery_app.celery_app worker --loglevel=info"
+    depends_on:
+      redis:
+        condition: service_healthy
+      server:
+        condition: service_started
+      minio:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+
+  # Flower for Celery monitoring
+  flower:
+    image: mher/flower:latest
+    environment:
+      - FLOWER_PORT=5555
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+      celery_worker:
+        condition: service_started
+
+volumes:
+  minio_data:

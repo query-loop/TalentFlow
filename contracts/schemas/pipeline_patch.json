@@ -1,0 +1,13 @@
+{
+  "$id": "https://talentflow.dev/schemas/pipeline_patch.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PipelinePatch",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "statuses": { "$ref": "./pipeline.json#/properties/statuses" },
+    "company": { "type": ["string", "null"] },
+    "jdId": { "type": ["string", "null"] },
+    "resumeId": { "type": ["string", "null"] }
+  }
+}

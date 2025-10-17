@@ -1,0 +1,19 @@
+{
+  "$id": "https://talentflow.dev/schemas/extracted_jd.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExtractedJD",
+  "type": "object",
+  "required": ["raw", "when", "skills", "responsibilities", "requirements"],
+  "properties": {
+    "title": { "type": "string" },
+    "company": { "type": "string" },
+    "location": { "type": "string" },
+    "experienceYears": { "type": ["integer", "null"] },
+    "seniority": { "type": ["string", "null"] },
+    "skills": { "type": "array", "items": { "type": "string" } },
+    "responsibilities": { "type": "array", "items": { "type": "string" } },
+    "requirements": { "type": "array", "items": { "type": "string" } },
+    "raw": { "type": "string" },
+    "when": { "type": "integer", "description": "Unix ms" }
+  }
+}

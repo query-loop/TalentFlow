@@ -1,0 +1,27 @@
+{
+  "$id": "https://talentflow.dev/schemas/pipeline.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pipeline",
+  "type": "object",
+  "required": ["id", "name", "createdAt", "statuses"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "createdAt": { "type": "integer" },
+    "company": { "type": ["string", "null"] },
+    "jdId": { "type": ["string", "null"] },
+    "resumeId": { "type": ["string", "null"] },
+    "statuses": {
+      "type": "object",
+      "properties": {
+        "extract": { "type": "string", "enum": ["pending", "active", "complete", "failed"] },
+        "generate": { "type": "string", "enum": ["pending", "active", "complete", "failed"] },
+        "keywords": { "type": "string", "enum": ["pending", "active", "complete", "failed"] },
+        "ats": { "type": "string", "enum": ["pending", "active", "complete", "failed"] },
+        "export": { "type": "string", "enum": ["pending", "active", "complete", "failed"] },
+        "save": { "type": "string", "enum": ["pending", "active", "complete", "failed"] }
+      },
+      "required": ["extract", "generate", "keywords", "ats", "export", "save"]
+    }
+  }
+}

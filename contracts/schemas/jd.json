@@ -1,0 +1,19 @@
+{
+  "$id": "https://talentflow.dev/schemas/jd.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JobDescription",
+  "type": "object",
+  "required": ["id", "descriptionRaw", "createdAt"],
+  "properties": {
+    "id": { "type": "string" },
+    "company": { "type": "string" },
+    "role": { "type": "string" },
+    "location": { "type": "string" },
+    "sourceUrl": { "type": "string", "format": "uri" },
+    "sourceHost": { "type": "string" },
+    "descriptionRaw": { "type": "string" },
+    "extracted": { "$ref": "./extracted_jd.json" },
+    "reference": { "type": "string" },
+    "createdAt": { "type": "integer", "description": "Unix ms" }
+  }
+}

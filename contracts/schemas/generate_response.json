@@ -1,0 +1,15 @@
+{
+  "$id": "https://talentflow.dev/schemas/generate_response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenerateResponse",
+  "type": "object",
+  "properties": {
+    "summary": { "type": "string" },
+    "skills": { "type": "array", "items": { "type": "string" } },
+    "experience": { "type": "array", "items": { "type": "string" } },
+    "cost": { "type": "number" },
+    "tokenUsage": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "fullText": { "type": ["string", "null"] },
+    "plan": { "type": ["array", "null"], "items": { "type": "string" } }
+  }
+}

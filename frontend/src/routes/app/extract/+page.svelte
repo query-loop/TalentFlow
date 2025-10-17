@@ -1,7 +1,24 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
-  import { extractMeta, formatJD } from '$lib/jd';
+  import JDDisplay from '$lib/components/JDDisplay.svelte';
+  import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { api } from '$lib/api';
+  import { onDestroy } from 'svelte';
+
+  type JobPosting = {
+    title?: string;
+    description?: string;
+    jobLocationType?: string; // e.g., TELECOMMUTE
+    jobLocation?: Array<{
+      address?: {
+        addressLocality?: string;
+        addressRegion?: string;
+        addressCountry?: string;
+      }
+    }>;
+    hiringOrganization?: { name?: string };
+  };
 
   type JDItem = {
     id: string;
@@ -14,208 +31,241 @@
     updatedAt: number;
   };
 
+  let url = '';
+  let loading = false;
+  let error: string | null = null;
   let items: JDItem[] = [];
-  let importUrl = '';
-  let importing = false;
-  let importOpen = false;
-  let importPanelEl: HTMLDivElement;
-  let importBtnEl: HTMLButtonElement;
-  let confirmDeleteId: string | null = null;
-  let modalBackdropEl: HTMLDivElement;
+  let selectedId: string | null = null;
+  let successMsg: string | null = null;
+  let editId: string | null = null;
+  let editForm: Partial<JDItem> = {};
 
-  function load() {
-    try { items = JSON.parse(localStorage.getItem('tf_jd_items') || '[]'); } catch { items = []; }
+  function loadItems() {
+    try {
+      items = JSON.parse(localStorage.getItem('tf_jd_items') || '[]') as JDItem[];
+    } catch {
+      items = [];
+    }
+    if (!selectedId && items.length > 0) selectedId = items[0].id;
   }
-  function save() { localStorage.setItem('tf_jd_items', JSON.stringify(items)); }
 
-  onMount(load);
+  function saveItems() {
+    localStorage.setItem('tf_jd_items', JSON.stringify(items));
+  }
 
-  function openItem(id: string) { location.href = `/app/extract/${id}`; }
-  function hostOf(url?: string) { try { return url ? new URL(url).host : ''; } catch { return ''; } }
+  function idGen(): string {
+    try { return crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
+  }
+
+  function deriveLocation(job: JobPosting): string | undefined {
+    if (job.jobLocationType === 'TELECOMMUTE') return 'Remote';
+    const a = job.jobLocation?.[0]?.address;
+    if (!a) return undefined;
+    const parts = [a.addressLocality, a.addressRegion, a.addressCountry].filter(Boolean);
+    return parts.join(', ') || undefined;
+  }
+
+  function companyFromUrl(u: string): string | undefined {
+    try {
+      const { hostname, pathname } = new URL(u);
+      const host = hostname.toLowerCase();
+      const pathParts = pathname.split('/').filter(Boolean);
+
+      const nicify = (s: string) => s.replace(/[-_]+/g, ' ').replace(/[^a-z0-9 ]/gi, ' ').trim().replace(/\s+/g, ' ');
+      const title = (s: string) => nicify(s).split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '').join(' ').trim();
+
+      if (host.endsWith('lever.co') && pathParts[0]) return title(pathParts[0]);
+      if (host.endsWith('greenhouse.io') && pathParts[0]) return title(pathParts[0]);
+
+      const sldCandidates = new Set(['www','jobs','careers','boards']);
+      const first = host.split('.')[0];
+      let name = first && !sldCandidates.has(first) ? first : host.split('.').slice(-2, -1)[0];
+      const clean = nicify(name);
+      return clean ? title(clean) : undefined;
+    } catch { return undefined; }
+  }
+
+  function domainOf(u?: string): string | null {
+    if (!u) return null;
+    try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return null; }
+  }
+
+  function snippet(s: string, n = 280): string {
+    const t = (s || '').trim();
+    if (t.length <= n) return t;
+    return t.slice(0, n - 1).trimEnd() + '…';
+  }
+
+  async function onSubmit() {
+    error = null;
+    const u = url.trim();
+    if (!u) { error = 'Please paste a job URL.'; return; }
+    loading = true;
+    try {
+      const res = await api<{ success: boolean; data?: JobPosting; message?: string }>(
+        '/api/extract/ai',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: u }) }
+      );
+      if (!res?.success || !res?.data) {
+        throw new Error(res?.message || 'Extraction failed');
+      }
+      const job = res.data;
+      const item: JDItem = {
+        id: idGen(),
+        role: job.title || 'Untitled Role',
+        company: job.hiringOrganization?.name || companyFromUrl(u) || undefined,
+        location: deriveLocation(job),
+        source: u,
+        jd: job.description || '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      items = [item, ...items].slice(0, 200);
+      saveItems();
+      selectedId = item.id;
+      successMsg = 'Extracted successfully — opening details…';
+      // Navigate to details
+      goto(`/app/extract/${item.id}`);
+    } catch (e: any) {
+      error = e?.message || 'Failed to extract job posting.';
+    } finally {
+      loading = false;
+      setTimeout(() => (successMsg = null), 2500);
+    }
+  }
 
   function removeItem(id: string) {
     items = items.filter(i => i.id !== id);
-    save();
+    saveItems();
+    if (selectedId === id) selectedId = items[0]?.id || null;
   }
 
-  async function importFromUrl() {
-    const url = importUrl.trim();
-    if (!url) return;
-  importOpen = false;
-    importing = true;
-    try {
-      const res = await fetch('/api/fetch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) });
-      if (!res.ok) throw new Error(`Fetch failed ${res.status}`);
-      const { html } = await res.json();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      // Prefer JSON-LD JobPosting
-      let jdText = '';
-      const scripts = Array.from(doc.querySelectorAll('script[type="application/ld+json"]'));
-      for (const s of scripts) {
-        try {
-          const data = JSON.parse(s.textContent || '{}');
-          const arr = Array.isArray(data) ? data : [data];
-          for (const d of arr) {
-            if (d['@type'] === 'JobPosting') {
-              const desc = d.description || d.responsibilities || d.qualifications || '';
-              if (typeof desc === 'string') jdText = desc;
-            }
-          }
-        } catch {}
-      }
-      if (!jdText) {
-        const rich = doc.querySelector('.content, .posting, .posting-page, .section, article');
-        jdText = rich?.textContent || doc.body.textContent || '';
-      }
-      jdText = jdText.replace(/<[^>]+>/g, '').replace(/\u00a0/g, ' ');
-      jdText = formatJD(jdText);
-      const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-      const meta = extractMeta(jdText);
-      const item: JDItem = { id, company: meta.company, role: meta.title, location: meta.location, source: url, jd: jdText, createdAt: Date.now(), updatedAt: Date.now() };
-      items = [item, ...items];
-      save();
-      // Navigate to detail page for this JD
-      openItem(id);
-    } catch (e) { console.error(e); }
-    finally { importing = false; }
+  function startEdit(it: JDItem) {
+    editId = it.id;
+    editForm = { role: it.role, company: it.company, location: it.location, source: it.source };
+  }
+  function cancelEdit() { editId = null; editForm = {}; }
+  function saveEdit(id: string) {
+    items = items.map(it => it.id === id ? { ...it, ...editForm, updatedAt: Date.now() } : it);
+    saveItems();
+    editId = null; editForm = {};
   }
 
-  function addJD() {
-    const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    const now = Date.now();
-    const item: JDItem = { id, jd: '', createdAt: now, updatedAt: now } as JDItem;
-    items = [item, ...items];
-    save();
-    openItem(id);
-  }
+  onMount(loadItems);
 </script>
 
-<svelte:window
-  on:keydown={(e: KeyboardEvent) => { if (e.key === 'Escape' && importOpen) { importOpen = false; } }}
-  on:click={(e: MouseEvent) => {
-  const t = e.target as Node;
-  if (!importOpen) return;
-  // Close when clicking outside modal panel
-  if (importPanelEl && importPanelEl.contains(t)) return;
-  if (importBtnEl && importBtnEl.contains(t)) return;
-  if (modalBackdropEl && modalBackdropEl.contains(t)) {
-    // Only close if clicking the backdrop itself, not inside panel
-    const target = e.target as HTMLElement;
-    if (target === modalBackdropEl) {
-      importOpen = false;
-    }
-    return;
-  }
-  importOpen = false;
-}}
-/>
+<div class="p-3 md:p-6">
+  <section class="grid grid-cols-12 gap-5 items-start">
+    <!-- Left: form + saved imports -->
+    <div class="col-span-12 lg:col-span-5 space-y-5">
+      <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 p-5">
+        <h1 class="text-2xl md:text-3xl font-bold tracking-tight text-black dark:text-white">Extract Job Description</h1>
+        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Paste a job posting URL. We’ll fetch it and format the description professionally.</p>
 
-<section class="space-y-4">
-  <div class="flex items-center justify-between">
-    <h1 class="text-xl font-semibold flex items-center gap-2"><Icon name="tag"/> Extract JD</h1>
-    <span></span>
-  </div>
-
-  <div class="border rounded-lg bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 p-3">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <button class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700" on:click={addJD}><Icon name="plus"/> <span>New JD</span></button>
-        <button bind:this={importBtnEl} class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700" on:click={() => { importOpen = true; setTimeout(() => { try { (document.getElementById('import-url-input') as HTMLInputElement)?.focus(); } catch {} }, 0); }}>
-          <Icon name="download"/> <span>Import JD</span>
-        </button>
-      </div>
-      <div />
-    </div>
-  </div>
-
-  {#if importOpen}
-    <div bind:this={modalBackdropEl} class="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div bind:this={importPanelEl} class="w-[520px] max-w-[95vw] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl">
-        <div class="p-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-          <div class="font-medium text-sm flex items-center gap-2"><Icon name="download"/> Import Job Description</div>
-          <button class="text-xs px-2 py-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700" on:click={() => (importOpen = false)}>Close</button>
-        </div>
-        <div class="p-3 space-y-2">
-          <label for="import-url-input" class="text-xs text-gray-600 dark:text-gray-300">Paste a job posting URL (Lever, Greenhouse, Workday, etc.)</label>
-          <div class="flex items-center gap-2">
-            <div class="relative flex-1">
-              <span class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">
-                <Icon name="search" size={16} />
-              </span>
-              <input id="import-url-input" class="w-full text-sm border rounded pl-8 pr-3 py-2 bg-white dark:bg-slate-900/40 border-slate-200 dark:border-slate-700" placeholder="https://jobs.company.com/..." bind:value={importUrl} on:keydown={(e) => { if (e.key === 'Enter') importFromUrl(); }} />
-            </div>
-            <button class="text-sm px-3 py-2 rounded border border-slate-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 whitespace-nowrap" on:click={importFromUrl} disabled={!importUrl.trim() || importing}>{importing ? 'Importing…' : 'Import'}</button>
-          </div>
-          <div class="pt-1 text-[11px] space-y-1.5 text-gray-500 dark:text-gray-400">
-            <div><span class="font-medium text-gray-600 dark:text-gray-300">Related:</span> Lever, Greenhouse, Workday, Ashby, Teamtailor, SmartRecruiters</div>
-            <div><span class="font-medium text-gray-600 dark:text-gray-300">Warning:</span> Only import publicly accessible job posts; private or intranet links aren’t supported.</div>
-            <div><span class="font-medium text-gray-600 dark:text-gray-300">Description:</span> Paste a job URL and we’ll extract the description to create a JD card automatically.</div>
+        <div class="mt-4">
+          <label for="job-url" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Job URL</label>
+          <input
+            class="w-full text-base px-3.5 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            type="url"
+            placeholder="https://jobs.lever.co/company/role..."
+            id="job-url"
+            bind:value={url}
+            on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSubmit(); } }}
+          />
+          {#if error}
+            <div class="mt-2 text-sm text-red-600">{error}</div>
+          {/if}
+          {#if successMsg}
+            <div class="mt-2 text-sm text-green-700">{successMsg}</div>
+          {/if}
+          <div class="mt-3 flex items-center gap-2">
+            <button class="inline-flex items-center gap-2 text-sm px-4 py-2.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50" on:click={onSubmit} disabled={loading}>
+              {#if loading}
+                <Icon name="spinner" class="w-4 h-4 animate-spin" /> Fetching & formatting…
+              {:else}
+                <Icon name="sparkles" class="w-4 h-4" /> Extract
+              {/if}
+            </button>
+            <a class="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white" href="/app/extract">Reset</a>
           </div>
         </div>
       </div>
-    </div>
-  {/if}
 
-  {#if items.length}
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 items-stretch">
-      {#each items as it (it.id)}
-        <article class="border rounded-lg bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 p-3 flex flex-col h-full min-h-[220px] cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30" on:click={() => openItem(it.id)}>
-          <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
-            <span class="truncate pr-2" title={it.company || '—'}>{it.company || '—'}</span>
-            <span class="text-[11px] text-gray-400 dark:text-gray-500">{hostOf(it.source) || '—'}</span>
-          </div>
-          <div class="mt-1 min-h-[36px]">
-            <div class="font-medium truncate" title={it.role || 'Untitled'}>{it.role || 'Untitled'}</div>
-            <div class="text-xs text-gray-600 dark:text-gray-300 truncate">{it.location || ''}</div>
-          </div>
-          <p class="mt-2 text-xs text-gray-700 dark:text-gray-200 clamp-3 flex-1">{(it.jd || '').slice(0, 800)}</p>
-          <div class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            {#if confirmDeleteId === it.id}
-              <div class="border rounded bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700 p-2 flex items-center justify-between" on:click|stopPropagation>
-                <span class="text-red-700 dark:text-red-300">Delete this JD?</span>
-                <div class="flex items-center gap-2">
-                  <button class="px-2 py-1 rounded border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30" on:click|stopPropagation={() => { removeItem(it.id); confirmDeleteId = null; }}>Confirm</button>
-                  <button class="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700" on:click|stopPropagation={() => { confirmDeleteId = null; }}>Cancel</button>
-                </div>
+      <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 p-5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-black dark:text-white">Saved Imports</h2>
+          <div class="text-sm text-gray-500">{items.length} total</div>
+        </div>
+        {#if items.length === 0}
+          <div class="mt-3 text-sm text-gray-600 dark:text-gray-300">No imports yet. Paste a URL above to get started.</div>
+        {:else}
+          <div class="mt-4 grid grid-cols-1 gap-3">
+            {#each items as it}
+              <div class={`border rounded-lg p-4 ${selectedId === it.id ? 'ring-2 ring-blue-500 border-blue-300' : 'border-gray-200 dark:border-gray-700'} bg-white dark:bg-gray-800/70`}>
+                {#if editId === it.id}
+                  <div class="space-y-2">
+                    <div class="grid grid-cols-2 gap-2">
+                      <input class="border rounded px-2 py-1.5 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700" placeholder="Role" bind:value={editForm.role} />
+                      <input class="border rounded px-2 py-1.5 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700" placeholder="Company" bind:value={editForm.company} />
+                      <input class="border rounded px-2 py-1.5 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700" placeholder="Location" bind:value={editForm.location} />
+                      <input class="border rounded px-2 py-1.5 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700" placeholder="Source URL" bind:value={editForm.source} />
+                    </div>
+                    <div class="flex items-center justify-end gap-2">
+                      <button class="px-3 py-1.5 text-sm rounded border" on:click={cancelEdit}>Cancel</button>
+                      <button class="px-3 py-1.5 text-sm rounded bg-blue-600 text-white" on:click={() => saveEdit(it.id)}>Save</button>
+                    </div>
+                  </div>
+                {:else}
+                  <div class="flex items-start gap-3">
+                    <button class="flex-1 text-left" on:click={() => (selectedId = it.id)}>
+                      <div class="text-base font-medium text-gray-900 dark:text-gray-100">{it.role || 'Job Details'}</div>
+                      <div class="mt-0.5 text-sm text-gray-600 dark:text-gray-300 flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {#if it.company}<span class="inline-flex items-center gap-1"><Icon name="building" class="w-4 h-4" /> {it.company}</span>{/if}
+                        {#if it.location}<span class="inline-flex items-center gap-1"><Icon name="map" class="w-4 h-4" /> {it.location}</span>{/if}
+                        {#if it.source}<span class="inline-flex items-center gap-1 text-gray-500"><Icon name="external-link" class="w-4 h-4" /> {domainOf(it.source)}</span>{/if}
+                      </div>
+                      {#if it.jd}
+                        <div class="mt-1 text-xs text-gray-500 line-clamp-2">{snippet(it.jd)}</div>
+                      {/if}
+                    </button>
+                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <a class="text-sm px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700" href={`/app/extract/${it.id}`}>Open</a>
+                      <button class="text-sm px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-600" on:click={() => startEdit(it)}>Edit</button>
+                      <button class="text-sm px-2.5 py-1.5 rounded border border-red-300 text-red-700 hover:bg-red-50" on:click={() => removeItem(it.id)}>Delete</button>
+                    </div>
+                  </div>
+                {/if}
               </div>
-            {:else}
-              <div class="flex items-center justify-between gap-2">
-                <span class="truncate">Updated {new Date(it.updatedAt).toLocaleDateString()}</span>
-                <div class="flex items-center gap-2 shrink-0">
-                  {#if (it as any).reference || (it as any).extracted}
-                    <button class="px-2 py-1 rounded border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Keep this reference" on:click|stopPropagation={() => {
-                      try {
-                        const arr = JSON.parse(localStorage.getItem('tf_jd_items') || '[]');
-                        const cur = arr.find((x: any) => x.id === it.id);
-                        if (cur?.extracted) localStorage.setItem('tf_extracted_jd', JSON.stringify(cur.extracted));
-                        const refText = cur?.reference || '';
-                        localStorage.setItem('tf_generate_use_reference', String(!!refText));
-                        if (refText) localStorage.setItem('tf_generate_reference_text', refText);
-                      } catch {}
-                    }}>Keep reference</button>
-                  {/if}
-                  <button class="px-2 py-1 rounded border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
-                          aria-label="Delete JD"
-                          on:click|stopPropagation={() => { confirmDeleteId = it.id; }}>Delete</button>
-                </div>
-              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+
+    <!-- Right: preview pane -->
+    <aside class="col-span-12 lg:col-span-7">
+      <div class="sticky top-4 space-y-4">
+        {#if items.length > 0}
+          {#key selectedId}
+            {#if selectedId}
+              {#each items as it}
+                {#if it.id === selectedId}
+                  <JDDisplay 
+                    jdData={{
+                      title: it.role,
+                      company: it.company,
+                      location: it.location,
+                      source: it.source,
+                      description: it.jd
+                    }}
+                    showHeader={true}
+                  />
+                {/if}
+              {/each}
             {/if}
-          </div>
-        </article>
-      {/each}
-    </div>
-  {:else}
-    <div class="text-sm text-gray-600 dark:text-gray-400">No JDs yet. Create a new one or import from a URL.</div>
-  {/if}
-</section>
-
-<style>
-  .clamp-3 {
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-</style>
+          {/key}
+        {/if}
+      </div>
+    </aside>
+  </section>
+</div>

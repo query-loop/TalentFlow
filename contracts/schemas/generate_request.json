@@ -1,0 +1,13 @@
+{
+  "$id": "https://talentflow.dev/schemas/generate_request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenerateRequest",
+  "type": "object",
+  "required": ["job"],
+  "properties": {
+    "job": { "type": "string", "description": "JD reference text (concise)" },
+    "prompt": { "type": "string" },
+    "resumeId": { "type": "string" },
+    "jdId": { "type": "string" }
+  }
+}

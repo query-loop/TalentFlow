@@ -3,8 +3,15 @@ node_modules/
 .svelte-kit/
 .vite/
 .build/
-.env
-.env.*.local
+
+# Env files (keep examples)
+.env*
+!.env.example
+!.env.sample
+!.env.*.example
+!.env.*.sample
+.envrc
+.direnv/
 
 # Logs
 npm-debug.log*
@@ -26,3 +33,53 @@ pnpm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.python-version
+.venv/
+venv/
+
+# Secrets / Vaults / Keys
+.secrets/
+secrets/
+.secret/
+secret/
+.vault/
+vault/
+*.vault
+*.vault.*
+*.vault.yml
+*.sops.*
+*.age
+*.gpg
+*.asc
+*.p8
+*.key
+*.pem
+*.der
+*.cer
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.ovpn
+*.mobileprovision
+*.kubeconfig
+
+# Token/config files
+.npmrc
+.yarnrc
+.yarnrc.yml
+.pypirc
+.netrc
+.dockerconfigjson
+config.json
