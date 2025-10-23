@@ -50,7 +50,7 @@ services:
       - ./server:/app
     environment:
       - REDIS_URL=redis://redis:6379/0
-      # Same IP rotation config as server
+            # Same IP rotation config as server
       - IP_ROTATION_STRATEGY=tor
       - IP_ROTATION_INTERVAL=3
       - TOR_HOST=tor
