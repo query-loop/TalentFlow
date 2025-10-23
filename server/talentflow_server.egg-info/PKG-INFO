@@ -10,5 +10,14 @@ Requires-Dist: jsonschema<5,>=4.22
 Requires-Dist: sqlalchemy<3.0,>=2.0
 Requires-Dist: cachetools>=5.3
 Requires-Dist: aiohttp>=3.8
+Requires-Dist: httpx<1.0,>=0.25
+Requires-Dist: celery<6,>=5.3
+Requires-Dist: minio<8,>=7.1
+Requires-Dist: requests<3,>=2.30
+Requires-Dist: redis<5,>=4.6
+Requires-Dist: pypdf<4,>=3.0
+Requires-Dist: python-docx<1,>=0.8.11
+Requires-Dist: beautifulsoup4<5,>=4.12
+Requires-Dist: python-multipart<1,>=0.0.9
 Provides-Extra: dev
 Requires-Dist: pytest>=7.0; extra == "dev"

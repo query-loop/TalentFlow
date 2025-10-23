@@ -32,7 +32,7 @@ services:
       # Optional: Tor password if using control
       # - TOR_PASSWORD=your_tor_password
       - CHROMA_SERVER_URL=http://chroma:8000
-    command: bash -lc "pip install -U pip && pip install -e . && uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload"
+    command: bash -lc "pip install -U pip && pip install -e . && uvicorn app.main:app --host 0.0.0.0 --port 8080"
     ports:
       - "9002:8080"
     depends_on:
@@ -88,12 +88,12 @@ services:
       - ./frontend:/app
     environment:
       - BACKEND_BASE=http://server:8080
-      # Pass Codespaces environment variable so Vite can auto-detect
-      - CODESPACE_NAME=${CODESPACE_NAME:-}
-      # HMR will auto-configure for Codespaces; override with HMR_* env vars if needed
-      - HMR_PROTOCOL=${HMR_PROTOCOL:-}
-      - HMR_HOST=${HMR_HOST:-}
-      - HMR_CLIENT_PORT=${HMR_CLIENT_PORT:-}
+      # For proxied development environments (Codespaces/GitHub.dev) force HMR to wss and point the client to the
+      # forwarded host port 5174. These env vars are read by frontend/vite.config.ts
+      - HMR_PROTOCOL=wss
+      - HMR_CLIENT_PORT=5174
+      # Optionally set HMR_HOST to an explicit hostname if needed (left unset to allow Vite to use window.location.hostname)
+      # - HMR_HOST=crisped-host.example
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     ports:
       - "5174:5173"
@@ -138,7 +138,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
-    command: bash -lc "pip install -U pip && pip install -e . && celery -A app.celery_app.celery_app worker --loglevel=info"
+    command: bash -lc "python -m pip install -U pip && python -m pip install minio && python -m pip install -e . && celery -A app.celery_app.celery_app worker --loglevel=info"
     depends_on:
       redis:
         condition: service_healthy

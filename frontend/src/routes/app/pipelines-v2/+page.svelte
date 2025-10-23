@@ -8,25 +8,20 @@
 
   // Modal state
   let showCreate = false;
-  const form = { name: '', company: '' };
-  let jdFile: File | null = null;
+  const form = { name: '', company: '', jdUrl: '', jdDoc: '' };
   
   // Resume upload state
   let resumeFile: File | null = null;
   let resumeUploading = false;
   let resumeText: string = '';
   let resumeId: string | null = null;
-
-  // whether a JD document has been provided
-  $: jdProvided = !!jdFile;
-  // whether all required fields are present to enable Create
-  $: canCreate = !!(form.name?.trim() && form.company?.trim() && jdProvided && resumeFile && !resumeUploading);
+  // Removed sample data support
   
   function resetForm() {
     form.name = '';
     form.company = '';
-  // no JD URL: only document uploads supported
-    jdFile = null;
+    form.jdUrl = '';
+    form.jdDoc = '';
     resumeFile = null;
     resumeText = '';
     resumeId = null;
@@ -78,50 +73,42 @@
       resumeUploading = false;
     }
   }
-
-  function handleJdFileChange(e: Event) {
-    const input = e.target as HTMLInputElement;
-    if (!input.files || !input.files[0]) { jdFile = null; return; }
-    jdFile = input.files[0];
-    // when user selects a JD file, switch to document mode
-    form.jdMode = 'document';
-  }
   
   async function createWithConfig(){
     if (loading) return; loading = true; error=null;
     try {
       const baseName = (form.name || '').trim() || 'Untitled v2';
+      
+      // Determine JD source: URL or document text
+      let jdSource = form.jdUrl?.trim() || undefined;
+      if (!jdSource && form.jdDoc?.trim()) {
+        jdSource = 'manual:' + form.jdDoc.trim();
+      }
+      
       const p = await createPipelineV2({ 
         name: baseName, 
         company: form.company?.trim() || undefined, 
+        jdId: jdSource,
         resumeId: resumeId || undefined
       });
-
-      // If user provided a JD document, upload it to the new pipeline so server can extract text
-      if (jdFile) {
-        try {
-          const fd = new FormData();
-          fd.append('jd_file', jdFile, jdFile.name);
-          if (resumeFile) fd.append('resume_file', resumeFile as File, resumeFile.name);
-          await fetch(`/api/pipelines-v2/${p.id}/upload`, { method: 'POST', body: fd });
-        } catch (e:any) {
-          // non-blocking: record error but allow pipeline creation
-          console.warn('JD upload failed', e);
-        }
-      } else {
-        // No JD file: store intake data and resume as artifacts
-        const artifacts: any = { intake: { jdSource: 'none' } };
-        if (resumeId && resumeText) {
-          artifacts.resume = {
-            id: resumeId,
-            text: resumeText,
-            filename: resumeFile?.name || 'resume',
-            uploadedAt: Date.now()
-          };
-        }
-        await patchPipelineV2(p.id, { artifacts });
+      
+      // Store intake data and resume as artifacts
+      const artifacts: any = { 
+        intake: { 
+          jdSource: form.jdUrl ? 'url' : 'document'
+        } 
+      };
+      
+      if (resumeId && resumeText) {
+        artifacts.resume = {
+          id: resumeId,
+          text: resumeText,
+          filename: resumeFile?.name || 'resume',
+          uploadedAt: Date.now()
+        };
       }
-
+      
+      await patchPipelineV2(p.id, { artifacts });
       window.location.href = `/app/pipeline-v2/${p.id}`;
     } catch(e:any){ error = e?.message || 'Failed to create pipeline'; }
     finally { loading = false; showCreate = false; }
@@ -178,68 +165,6 @@
     { key: 'actions', label: 'Actions' },
     { key: 'export', label: 'Export' }
   ];
-
-  // Human-friendly details and implemented functionality for each step
-  const stepDetails: Record<string, { desc: string; implemented: string[] }> = {
-    intake: {
-      desc: 'Collect intake data: source of JD, company, resume upload and notes.',
-      implemented: [
-        'Resume upload & parsing (file -> text via /api/resume)',
-        'JD source selection (URL or pasted text)',
-        'Store intake artifacts on pipeline (artifacts.intake)'
-      ]
-    },
-    jd: {
-      desc: 'Job Description processing: fetch URL or parse pasted JD into structured blocks.',
-      implemented: [
-        'JD fetch from provided URL (when jdId is URL)',
-        'Text parsing into sections/blocks and snippet generation',
-        'Stored JD content under pipeline.artifacts for later steps'
-      ]
-    },
-    profile: {
-      desc: 'Build a candidate profile from resume and JD to target matching.',
-      implemented: [
-        'Resume -> parsed text stored as artifact',
-        'Extracted skills / experience summary (basic heuristics)',
-        'Associate resume with pipeline for downstream analysis'
-      ]
-    },
-    analysis: {
-      desc: 'Analyze JD vs profile: identify gaps, strengths, and recommendations.',
-      implemented: [
-        'Keyword tally and importance ranking',
-        'Short summary and suggested highlights for resume tailoring',
-        'Stores analysis notes in pipeline.artifacts.analysis'
-      ]
-    },
-    ats: {
-      desc: 'ATS compatibility scan to detect common resume formatting issues.',
-      implemented: [
-        'Simple ATS scoring via /api/mock/ats endpoint',
-        'Tips for improving headings, dates, and keyword placement',
-        'Saves last ATS score to localStorage for quick reference'
-      ]
-    },
-    actions: {
-      desc: 'Suggested actions: generate tailored resume, tweak formatting, or export.',
-      implemented: [
-        'Generate tailored resume content using templates',
-        'Quick actions UI to copy, download or re-run steps',
-        'Placeholder hooks for integrations (ATS/job board pushes)'
-      ]
-    },
-    export: {
-      desc: 'Export final artifacts: PDF/Docs or pipeline bundle for handoff.',
-      implemented: [
-        'Placeholder export page per pipeline',
-        'Notes for applying chosen theme to generated resume output'
-      ]
-    }
-  };
-
-  // UI state: which pipeline card is expanded to show inner details
-  let expandedPipelineId: string | null = null;
 </script>
 
 <section class="space-y-4">
@@ -302,6 +227,17 @@
               {/each}
             </div>
             <div class="flex items-center gap-3">
+              {#if p.jdId && /^https?:\/\//.test(p.jdId)}
+                <a
+                  href={p.jdId}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center text-xs text-blue-600 hover:underline gap-1"
+                  title="Open JD link"
+                >
+                  <Icon name="external-link" size={14} /> JD
+                </a>
+              {/if}
               <a
                 href={`/app/pipeline-v2/${p.id}`}
                 class="inline-flex items-center text-sm px-3 py-1.5 rounded-md backdrop-blur-sm bg-white/40 dark:bg-white/10 border border-white/50 dark:border-white/10 text-gray-800 dark:text-gray-100 shadow-sm hover:bg-white/60 dark:hover:bg-white/20 transition"
@@ -322,39 +258,6 @@
                 <Icon name="trash" size={16} />
               </button>
             </div>
-          </div>
-          <!-- Expandable inner details: shows per-step description and implemented functionality -->
-          <div class="mt-3">
-            <button
-              class="text-sm text-slate-600 dark:text-slate-300 hover:underline"
-              on:click={() => { expandedPipelineId = expandedPipelineId === p.id ? null : p.id; }}
-            >
-              {expandedPipelineId === p.id ? 'Hide details' : 'Show details'}
-            </button>
-
-            {#if expandedPipelineId === p.id}
-              <div class="mt-3 grid gap-3 grid-cols-1 md:grid-cols-2">
-                {#each v2Steps as s}
-                  <div class="border rounded-lg p-3 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                    <div class="flex items-start justify-between">
-                      <div>
-                        <div class="font-medium">{s.label}</div>
-                        <div class="text-xs text-gray-500 dark:text-gray-400">{stepDetails[s.key].desc}</div>
-                      </div>
-                      <div class="text-xs text-gray-400">{(p.statuses && (p.statuses as any)[s.key]) || 'pending'}</div>
-                    </div>
-                    <div class="mt-2 text-xs text-gray-700 dark:text-gray-200">
-                      <div class="font-medium text-sm mb-1">Implemented</div>
-                      <ul class="list-disc ml-4 space-y-1">
-                        {#each stepDetails[s.key].implemented as feat}
-                          <li>{feat}</li>
-                        {/each}
-                      </ul>
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            {/if}
           </div>
         </li>
       {/each}
@@ -412,6 +315,48 @@
                   </label>
                 </div>
               </div>
+              
+              <!-- Resume Upload -->
+              <div>
+                <h3 class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                  <Icon name="file-text" size={16} />
+                  Resume Upload
+                </h3>
+                <div class="space-y-3">
+                  <label class="block">
+                    <span class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Upload Resume (PDF or DOCX)</span>
+                    <div class="relative">
+                      <input 
+                        type="file" 
+                        accept=".pdf,.docx,.doc" 
+                        class="w-full text-sm border border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer
+                               file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 
+                               file:text-sm file:font-medium file:cursor-pointer
+                               file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 
+                               dark:file:bg-blue-900/30 dark:file:text-blue-300 dark:hover:file:bg-blue-900/50
+                               bg-white dark:bg-slate-800 transition" 
+                        on:change={handleResumeUpload}
+                        disabled={resumeUploading}
+                      />
+                    </div>
+                  </label>
+                  
+                  {#if resumeUploading}
+                    <div class="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <svg class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
+                      <span>Uploading and parsing resume...</span>
+                    </div>
+                  {/if}
+                  
+                  {#if resumeFile && resumeId}
+                    <div class="text-xs text-green-600 dark:text-green-400 flex items-center gap-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                      <Icon name="check-circle" size={14} />
+                      <span class="font-medium">{resumeFile.name}</span>
+                      <span class="text-green-500 dark:text-green-500">• Uploaded successfully</span>
+                    </div>
+                  {/if}
+                </div>
+              </div>
             </div>
             
             <!-- Right Column: JD Source -->
@@ -423,76 +368,65 @@
                 </h3>
                 <div class="space-y-3">
                   <label class="block">
-                    <span class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Upload JD Document (PDF or DOCX)</span>
-                    <input type="file" accept=".pdf,.docx,.doc,.txt" class="w-full text-sm" on:change={handleJdFileChange} />
+                    <span class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">JD URL (Optional)</span>
+                    <input 
+                      class="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" 
+                      bind:value={form.jdUrl} 
+                      placeholder="https://jobs.lever.co/company/job-id" 
+                    />
                   </label>
-                  {#if jdFile}
-                    <div class="text-xs text-green-600 dark:text-green-400 flex items-center gap-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 mt-2">
-                      <Icon name="check-circle" size={14} />
-                      <span class="font-medium">{jdFile.name}</span>
-                      <span class="text-green-500 dark:text-green-500">• Selected</span>
-                    </div>
+                  {#if form.jdUrl?.trim()}
+                  <div class="text-xs mt-1">
+                    <a class="inline-flex items-center gap-1 text-blue-600 hover:underline" href={form.jdUrl} target="_blank" rel="noopener noreferrer">
+                      <Icon name="external-link" size={12} /> Open JD link
+                    </a>
+                  </div>
                   {/if}
-
-                  <!-- Resume Upload (moved below JD) -->
-                  <div class="mt-4">
-                    <h3 class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                      <Icon name="file-text" size={16} />
-                      Resume Upload
-                    </h3>
-                    <div class="space-y-3">
-                      <label class="block">
-                        <span class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Upload Resume (PDF or DOCX)</span>
-                        <div class="relative">
-                          <input 
-                            type="file" 
-                            accept=".pdf,.docx,.doc" 
-                            class="w-full text-sm border border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer
-                                   file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 
-                                   file:text-sm file:font-medium file:cursor-pointer
-                                   file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 
-                                   dark:file:bg-blue-900/30 dark:file:text-blue-300 dark:hover:file:bg-blue-900/50
-                                   bg-white dark:bg-slate-800 transition" 
-                            on:change={handleResumeUpload}
-                            disabled={resumeUploading}
-                          />
-                        </div>
-                      </label>
-                      
-                      {#if resumeUploading}
-                        <div class="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                          <svg class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
-                          <span>Uploading and parsing resume...</span>
-                        </div>
-                      {/if}
-                      
-                      {#if resumeFile && resumeId}
-                        <div class="text-xs text-green-600 dark:text-green-400 flex items-center gap-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                          <Icon name="check-circle" size={14} />
-                          <span class="font-medium">{resumeFile.name}</span>
-                          <span class="text-green-500 dark:text-green-500">• Uploaded successfully</span>
-                        </div>
-                      {/if}
+                  
+                  <div class="relative">
+                    <div class="absolute inset-0 flex items-center">
+                      <div class="w-full border-t border-slate-300 dark:border-slate-600"></div>
+                    </div>
+                    <div class="relative flex justify-center text-xs">
+                      <span class="px-2 bg-white dark:bg-slate-900 text-slate-500">OR</span>
                     </div>
                   </div>
+                  
+                  <label class="block">
+                    <span class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Paste JD Text</span>
+                    <textarea 
+                      class="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-mono"
+                      bind:value={form.jdDoc} 
+                      placeholder="Paste the job description here..."
+                      rows="12"
+                      disabled={!!form.jdUrl?.trim()}
+                    ></textarea>
+                  </label>
+                  
+                  {#if form.jdUrl?.trim()}
+                    <div class="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                      <Icon name="info" size={12} />
+                      <span>URL takes precedence over pasted text</span>
+                    </div>
+                  {/if}
                 </div>
               </div>
             </div>
           </div>
           
-          <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700"></div>
+          
         </div>
         
         <!-- Footer -->
         <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 rounded-b-xl">
           <div class="text-xs text-slate-500 dark:text-slate-400">
-            {#if canCreate}
+            {#if resumeFile && (form.jdUrl?.trim() || form.jdDoc?.trim())}
               <span class="text-green-600 dark:text-green-400 flex items-center gap-1">
                 <Icon name="check-circle" size={14} />
                 Ready to create
               </span>
             {:else}
-              <span>Provide pipeline name, company, JD document and resume to enable creation</span>
+              <span>Upload resume and provide JD to continue</span>
             {/if}
           </div>
           <div class="flex items-center gap-3">
@@ -504,7 +438,7 @@
             </button>
             <button 
               class="px-4 py-2 rounded-lg text-sm font-medium bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-500/30 flex items-center gap-2" 
-              disabled={!canCreate || loading} 
+              disabled={loading || !resumeFile || (!form.jdUrl?.trim() && !form.jdDoc?.trim())} 
               on:click={createWithConfig}
             >
               {#if loading}

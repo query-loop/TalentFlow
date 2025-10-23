@@ -148,6 +148,50 @@
   }
 
   // We no longer support manual JD paste on this page. JD editing/paste was removed.
+
+  // Validation/status badges for attached artifacts
+  $: jdStatus = (() => {
+    const j = pipe?.artifacts && (pipe.artifacts as any).jd;
+    if (!j) return 'missing';
+    const st = (j.parse_job_status || '').toUpperCase();
+    if (st === 'SUCCESS' || j.extracted === true) return 'success';
+    if (['FAILURE', 'REVOKED', 'ERROR', 'FAIL'].includes(st)) return 'error';
+    if (j.parse_job_id || intakeInProgress) return 'in-progress';
+    return 'attached';
+  })();
+
+  $: resumeStatus = (() => {
+    const r = pipe?.artifacts && (pipe.artifacts as any).resume;
+    if (!r) return 'missing';
+    const st = (r.parse_job_status || '').toUpperCase();
+    // if parsed text exists or parse succeeded
+    if (r.text || st === 'SUCCESS') return 'success';
+    if (['FAILURE', 'REVOKED', 'ERROR', 'FAIL'].includes(st)) return 'error';
+    // If there's an attached resume but no parse job and no extracted text, mark as error / needs attention
+    if ((!r.parse_job_id && !r.text && !st) && (r.filename || r.minio_uri)) return 'error';
+    if (r.parse_job_id || intakeInProgress) return 'in-progress';
+    return 'attached';
+  })();
+
+  function badgeClass(s: string) {
+    switch (s) {
+      case 'success': return 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800';
+      case 'error': return 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800';
+      case 'in-progress': return 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800';
+      case 'attached': return 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700';
+      default: return 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-50 text-slate-500';
+    }
+  }
+
+  function badgeLabel(s: string) {
+    switch (s) {
+      case 'success': return 'Ready';
+      case 'error': return 'Failed';
+      case 'in-progress': return 'Processing';
+      case 'attached': return 'Attached';
+      default: return 'Missing';
+    }
+  }
 </script>
 
 {#if loading}
@@ -207,98 +251,62 @@
     </div>
 
 
-    <!-- Job Description Link -->
     <div class="border rounded-lg p-6 bg-white dark:bg-slate-800">
-      <h3 class="text-base font-medium text-slate-900 dark:text-slate-100 mb-4">Provide JD and Resume</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <h3 class="text-base font-medium text-slate-900 dark:text-slate-100 mb-4">Attached files</h3>
+      <div class="space-y-4">
         <div>
-          <label class="text-xs text-slate-600">Job description URL</label>
-          <input bind:value={jdUrl} placeholder="https://jobs.example.com/123" class="w-full mt-1 px-3 py-2 border rounded" />
-        </div>
-        <div>
-          <label class="text-xs text-slate-600">Or upload JD file (pdf/docx/txt)</label>
-          <input type="file" on:change={(e)=> jdFile = e.target.files?.[0] || null} class="w-full mt-1" />
-        </div>
-        <div>
-          <label class="text-xs text-slate-600">Upload resume (pdf/docx/txt)</label>
-          <input type="file" on:change={(e)=> resumeFile = e.target.files?.[0] || null} class="w-full mt-1" />
-        </div>
-        <!-- Automatic run removed; run the pipeline from the Run page when ready -->
-      </div>
-      <div class="mt-4">
-        <button class="btn btn-primary" on:click={handleUploadAndMaybeRun} disabled={uploadBusy || intakeInProgress}>{uploadBusy ? 'Uploading…' : (intakeInProgress ? 'Intake in progress…' : 'Upload')}</button>
-      </div>
-    </div>
-
-      <!-- Intake modal showing attached files and progress -->
-      {#if showAttachModal}
-        <div class="fixed inset-0 z-50 flex items-center justify-center">
-          <div class="absolute inset-0 bg-black/40" on:click={()=>{ /* don't close on backdrop now */ }}></div>
-          <div class="bg-white dark:bg-slate-800 rounded-lg p-6 max-w-xl w-full z-10">
-            <h4 class="text-sm font-medium mb-2">Intake progress</h4>
-            <div class="text-xs text-slate-600 dark:text-slate-300 mb-3">{intakeStatusMessage}</div>
-            <div class="space-y-3">
-              <div>
-                <div class="text-xs text-slate-500">Job Description</div>
-                {#if pipe.artifacts && (pipe.artifacts as any).jd}
-                  <div class="mt-1 p-3 bg-slate-50 dark:bg-slate-700 rounded">
-                    <div class="text-sm font-medium">{(pipe.artifacts as any).jd.title || (pipe.jdId || 'Uploaded JD')}</div>
-                    {#if (pipe.artifacts as any).jd.minio_uri}
-                      <div class="text-xs text-slate-500">Stored: {(pipe.artifacts as any).jd.minio_uri}</div>
-                    {/if}
-                    {#if pipe.jdId}
-                      <div class="text-xs text-slate-500">Source URL: <a href={pipe.jdId} target="_blank" class="text-blue-600 hover:underline">{pipe.jdId}</a></div>
-                    {/if}
-                  </div>
-                {:else}
-                  <div class="mt-1 text-xs text-slate-500">No JD data yet</div>
-                {/if}
-              </div>
-              <div>
-                <div class="text-xs text-slate-500">Resume</div>
-                {#if pipe.artifacts && (pipe.artifacts as any).resume}
-                  <div class="mt-1 p-3 bg-slate-50 dark:bg-slate-700 rounded">
-                    <div class="text-sm font-medium">{(pipe.artifacts as any).resume.filename || 'Attached resume'}</div>
-                    {#if (pipe.artifacts as any).resume.minio_uri}
-                      <div class="text-xs text-slate-500">Stored: {(pipe.artifacts as any).resume.minio_uri}</div>
-                    {/if}
-                    {#if (pipe.artifacts as any).resume.parse_job_id}
-                      <div class="text-xs text-slate-500">Parse job: {(pipe.artifacts as any).resume.parse_job_id} ({(pipe.artifacts as any).resume.parse_job_status || 'queued'})</div>
-                    {/if}
-                  </div>
-                {:else}
-                  <div class="mt-1 text-xs text-slate-500">No resume data yet</div>
-                {/if}
-              </div>
-              <div class="pt-2">
-                <div class="h-2 bg-slate-200 rounded overflow-hidden">
-                  <div class="h-2 bg-blue-500" style="width: {intakeInProgress ? '60%' : '100%'}"></div>
-                </div>
-              </div>
-              <div class="flex justify-end mt-3">
-                <button class="btn" on:click={()=>{ showAttachModal = false; }}>Close</button>
+          <div class="text-xs text-slate-500">Job Description</div>
+            <div class="flex items-center justify-between">
+              <div class="text-xs text-slate-500">Job Description</div>
+              <div class="ml-2">
+                <span class={badgeClass(jdStatus)}>{badgeLabel(jdStatus)}</span>
               </div>
             </div>
-          </div>
+          {#if pipe.artifacts && (pipe.artifacts as any).jd}
+            <div class="mt-1 p-3 bg-slate-50 dark:bg-slate-700 rounded">
+              <div class="text-sm font-medium">{(pipe.artifacts as any).jd.title || (pipe.jdId || 'Uploaded JD')}</div>
+              {#if (pipe.artifacts as any).jd.minio_uri}
+                <div class="text-xs text-slate-500">Stored: {(pipe.artifacts as any).jd.minio_uri}</div>
+              {/if}
+              {#if pipe.jdId}
+                <div class="text-xs text-slate-500">Source URL: <a href={pipe.jdId} target="_blank" class="text-blue-600 hover:underline">{pipe.jdId}</a></div>
+              {/if}
+            </div>
+            <div class="flex items-center justify-between mt-3">
+              <div class="text-xs text-slate-500">Resume</div>
+              <div class="ml-2">
+                <span class={badgeClass(resumeStatus)}>{badgeLabel(resumeStatus)}</span>
+              </div>
+            </div>
+            {#if (pipe.artifacts as any).ats}
+              <div class="mt-2 text-xs text-slate-500">ATS score: <span class="font-medium">{(pipe.artifacts as any).ats.aggregate ?? (pipe.artifacts as any).ats.score ?? '—'}</span></div>
+            {/if}
+            {#if !(pipe.artifacts as any).profile || !((pipe.artifacts as any).profile.parsed)}
+              <div class="mt-1 text-sm text-red-700 dark:text-red-300">No resume parsed for this pipeline.</div>
+            {/if}
+          {/if}
         </div>
-      {/if}
 
-    <!-- JD link/card removed — uploads and JD URL are shown in the intake modal -->
-
-    <!-- Resume filename (no parsed content). Resume itself is not shown on JD page; we only show the filename here. -->
-    <div class="border rounded-lg p-6 bg-white dark:bg-slate-800">
-      <h3 class="text-base font-medium text-slate-900 dark:text-slate-100 mb-4">Resume</h3>
-      {#if pipe.artifacts && (pipe.artifacts as any).resume}
-        <div class="flex items-center justify-between gap-4 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-          <div class="flex items-center gap-2">
-            <Icon name="user" size={16} />
-            <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{(pipe.artifacts as any).resume.filename || 'Attached resume'}</div>
-          </div>
-          <div class="text-xs text-slate-500 dark:text-slate-400">Attached</div>
+        <div>
+         
+          {#if pipe.artifacts && (pipe.artifacts as any).resume}
+            <div class="mt-1 p-3 bg-slate-50 dark:bg-slate-700 rounded">
+              <div class="text-sm font-medium">{(pipe.artifacts as any).resume.filename || 'Attached resume'}</div>
+              {#if (pipe.artifacts as any).resume.minio_uri}
+                <div class="text-xs text-slate-500">Stored: {(pipe.artifacts as any).resume.minio_uri}</div>
+              {/if}
+            </div>
+              {#if resumeStatus === 'error'}
+                <div class="mt-2 text-sm text-red-700 dark:text-red-300">No resume parsed for this pipeline.</div>
+              {/if}
+              {#if (pipe.artifacts as any).profile && (pipe.artifacts as any).profile.parsed}
+                <div class="mt-2 text-sm text-slate-700 dark:text-slate-300">Parsed resume: <span class="font-medium">{(pipe.artifacts as any).profile.parsed.name || 'Parsed'}</span></div>
+              {/if}
+          {:else}
+            <div class="mt-1 text-xs text-slate-500">No resume attached to this pipeline.</div>
+          {/if}
         </div>
-      {:else}
-        <div class="text-xs text-slate-500 dark:text-slate-400">No resume attached to this pipeline.</div>
-      {/if}
+      </div>
     </div>
 
     <!-- Notes Section -->

@@ -28,7 +28,7 @@
     { id: 'generate', label: 'Generate a resume', href: '/app/generate', icon: 'sparkles' },
     { id: 'ats',      label: 'ATS score',   href: '/app/ats',      icon: 'shield-check' },
     { id: 'keywords', label: 'Run keyword analysis', href: '/app/keywords', icon: 'tag' },
-    // Themes quick task removed
+    { id: 'themes',   label: 'Choose a theme',    href: '/app/themes',   icon: 'palette' }
   ];
   let draggingTaskId: string | null = null;
   function saveQuickTasksOrder() {
@@ -107,7 +107,7 @@
     { key: 'generate', label: 'Generate',   icon: 'sparkles',     link: '/app/generate',  desc: 'Create a theme-aware draft' },
     { key: 'keywords', label: 'Keywords',   icon: 'tag',          link: '/app/keywords',  desc: 'Analyze terms and gaps' },
     { key: 'ats',      label: 'ATS',        icon: 'shield-check', link: '/app/ats',       desc: 'Score and get tips' },
-  { key: 'export',   label: 'Export',     icon: 'layers',       link: '/app/export',    desc: 'Export to PDF/DOCX' },
+    { key: 'export',   label: 'Export',     icon: 'layers',       link: '/app/themes',    desc: 'Export to PDF/DOCX' },
     { key: 'save',     label: 'Save',       icon: 'folder',       link: '/app/library',   desc: 'Store in your Library' }
   ];
   

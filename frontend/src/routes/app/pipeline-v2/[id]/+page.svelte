@@ -135,13 +135,36 @@
   <div class="p-6"><div class="border rounded p-4">Loading…</div></div>
 {:else}
   <div class="p-6 space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold">{pipe.name}</h1>
-      <a href="/app/pipelines-v2" class="text-sm text-blue-600 hover:underline">All v2 pipelines</a>
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-semibold truncate" title={pipe.name}>{pipe.name}</h1>
+        <div class="text-sm text-slate-500 mt-1">Pipeline overview · <span class="font-mono">{pipe.id}</span></div>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="/app/pipelines-v2" class="text-sm text-gray-600 hover:text-gray-800 dark:text-slate-300">All v2 pipelines</a>
+        <a href={`/app/pipeline-v2/stats`} class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"> 
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3v8H3zM10 8h3v12h-3zM17 4h3v16h-3z" /></svg>
+          Stats
+        </a>
+      </div>
     </div>
-    <div class="border rounded p-4">
-      <div class="text-xs text-gray-600">ID: {pipe.id}</div>
-      <div class="text-sm text-gray-600 mt-1">You're on the pipeline overview. Use the step navigation above to continue.</div>
+    <div class="border rounded-lg p-4 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <div class="text-xs text-slate-600">ID: <span class="font-mono text-xs text-slate-700 dark:text-slate-300">{pipe.id}</span></div>
+          <div class="text-sm text-slate-600 mt-1">Use the step navigation above to move through the pipeline.</div>
+        </div>
+        <div class="text-sm text-slate-700 dark:text-slate-200">
+          {#if pipe.statuses}
+            {@const completed = Object.values(pipe.statuses).filter(s => s === 'complete').length}
+            {@const total = Object.keys(pipe.statuses).length || 7}
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-sm">
+              <span class="text-xs text-slate-500">Steps</span>
+              <span class="font-medium">{completed}/{total}</span>
+            </div>
+          {/if}
+        </div>
+      </div>
     </div>
     <div class="mt-4 grid gap-3">
       <div class="flex items-center gap-3">

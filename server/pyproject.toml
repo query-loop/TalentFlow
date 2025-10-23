@@ -10,7 +10,16 @@ dependencies = [
   "jsonschema>=4.22,<5",
   "sqlalchemy>=2.0,<3.0",
   "cachetools>=5.3",
-  "aiohttp>=3.8"
+  "aiohttp>=3.8",
+  "httpx>=0.25,<1.0",
+  "celery>=5.3,<6",
+  "minio>=7.1,<8",
+  "requests>=2.30,<3",
+  "redis>=4.6,<5",
+  "pypdf>=3.0,<4",
+  "python-docx>=0.8.11,<1",
+  "beautifulsoup4>=4.12,<5",
+  "python-multipart>=0.0.9,<1"
 ]
 
 [project.optional-dependencies]
