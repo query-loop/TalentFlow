@@ -1,9 +1,8 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { getPipelineV2, patchPipelineV2, type PipelineV2 } from '$lib/pipelinesV2';
+  import { getPipelineV2, type PipelineV2 } from '$lib/pipelinesV2';
   import Icon from '$lib/Icon.svelte';
   import { v2PathForStep } from '$lib/pipelineTrackerV2';
-  import ResumeScoreView from '$lib/components/ResumeScoreView.svelte';
 
   $: id = $page.params.id;
   let pipe: PipelineV2 | null = null;
@@ -19,61 +18,6 @@
   $: if (id) load();
 
   $: scoring = pipe?.artifacts && (pipe.artifacts as any).scoring;
-
-  // Resume scoring state (moved from JD page)
-  let scoringResume = false;
-  let resumeScore: any = null;
-
-  async function scoreResumeAgainstJD() {
-    if (!pipe || !id) return;
-
-    const jdArtifact = pipe.artifacts && (pipe.artifacts as any).jd;
-    const resumeArtifact = pipe.artifacts && (pipe.artifacts as any).resume;
-    if (!jdArtifact || !resumeArtifact) return;
-    if (!jdArtifact.description || !resumeArtifact.text) return;
-
-    scoringResume = true;
-    try {
-      const response = await fetch('/api/scoring/score', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jd_text: jdArtifact.description,
-          resume_text: resumeArtifact.text,
-          jd_title: jdArtifact.title,
-          jd_requirements: jdArtifact.key_requirements
-        })
-      });
-
-      if (!response.ok) throw new Error('Scoring failed');
-
-      resumeScore = await response.json();
-
-      // Save score to pipeline artifacts
-      const artifacts: any = { ...(pipe.artifacts || {}) };
-      artifacts.scoring = resumeScore;
-      await patchPipelineV2(id, { artifacts });
-      // refresh local pipe
-      pipe = await getPipelineV2(id);
-    } catch (e: any) {
-      console.error('Scoring error:', e);
-    } finally {
-      scoringResume = false;
-    }
-  }
-
-  // Auto-score when JD and resume are both available (if not already scored)
-  $: if (pipe && pipe.artifacts) {
-    const jdReady = (pipe.artifacts as any).jd && (pipe.artifacts as any).jd.description;
-    const resumeReady = (pipe.artifacts as any).resume && (pipe.artifacts as any).resume.text;
-    const notScoredYet = !resumeScore && !(pipe.artifacts as any).scoring;
-
-    if (jdReady && resumeReady && notScoredYet && !scoringResume) {
-      scoreResumeAgainstJD();
-    } else if ((pipe.artifacts as any).scoring && !resumeScore) {
-      resumeScore = (pipe.artifacts as any).scoring;
-    }
-  }
 </script>
 
 {#if loading}

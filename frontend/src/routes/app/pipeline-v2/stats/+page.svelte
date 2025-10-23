@@ -1,11 +1,18 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getExtractionStats } from '$lib/pipelinesV2';
+  import { getExtractionStats, debugTestExtraction } from '$lib/pipelinesV2';
   import Icon from '$lib/Icon.svelte';
 
   let stats: any = null;
   let error: string | null = null;
   let loading = true;
+  let fromDate: string | null = null;
+  let toDate: string | null = null;
+
+  // Debug test vars
+  let testUrl = '';
+  let debugResult: any = null;
+  let debugLoading = false;
 
   async function loadStats() {
     try {
@@ -20,18 +27,47 @@
   }
 
   onMount(loadStats);
+
+  function exportCsv() {
+    // Basic CSV export of top_pipelines if present
+    const rows: string[] = [];
+    rows.push(['id','name','company','quality_score','runs'].join(','));
+    const list = stats?.top_pipelines || [];
+    for (const p of list) {
+      rows.push([p.id, `"${(p.name||'').replace(/\"/g,'\"')}"`, `"${(p.company||'').replace(/\"/g,'\"')}"`, p.quality_score, p.runs].join(','));
+    }
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `pipeline_v2_stats_${Date.now()}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  async function runDebugTest() {
+    if (!testUrl?.trim()) return;
+
+    try {
+      debugLoading = true;
+      debugResult = await debugTestExtraction(testUrl);
+    } catch (e: any) {
+      debugResult = { error: e.message || 'Test failed' };
+    } finally {
+      debugLoading = false;
+    }
+  }
+
 </script>
 
 <div class="p-6">
-  <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100">Pipeline V2 Extraction Statistics</h1>
-    <button
-      class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-      on:click={loadStats}
-      disabled={loading}
-    >
-      {loading ? 'Loading...' : 'Refresh'}
-    </button>
+  <div class="flex items-center justify-between mb-6 gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100">Pipeline V2 Statistics</h1>
+      <div class="text-sm text-slate-500 mt-1">Overview of extraction, pipeline performance and IP rotation health.</div>
+    </div>
+    <div class="flex items-center gap-2">
+      <input type="date" bind:value={fromDate} class="px-3 py-1 border rounded bg-white dark:bg-slate-800 text-sm" />
+      <input type="date" bind:value={toDate} class="px-3 py-1 border rounded bg-white dark:bg-slate-800 text-sm" />
+      <button class="px-3 py-1 border rounded text-sm" on:click={loadStats} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
+      <button class="px-3 py-1 bg-slate-50 dark:bg-slate-700 border rounded text-sm" on:click={exportCsv}>Export CSV</button>
+    </div>
   </div>
 
   {#if loading}
@@ -53,7 +89,7 @@
   {:else if stats}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- Anti-Bot Summary -->
-      <div class="border rounded-lg p-6 bg-white dark:bg-slate-800">
+      <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
           <Icon name="shield" size={20} />
           Anti-Bot Performance
@@ -83,7 +119,7 @@
       </div>
 
       <!-- Pipeline Performance -->
-      <div class="border rounded-lg p-6 bg-white dark:bg-slate-800">
+      <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
           <Icon name="bar-chart" size={20} />
           Pipeline Performance
@@ -113,7 +149,7 @@
       </div>
 
       <!-- Extraction Methods -->
-      <div class="border rounded-lg p-6 bg-white dark:bg-slate-800">
+      <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
           <Icon name="settings" size={20} />
           Extraction Methods Used
@@ -132,7 +168,7 @@
       </div>
 
       <!-- IP Rotation Stats -->
-      <div class="border rounded-lg p-6 bg-white dark:bg-slate-800">
+      <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
           <Icon name="globe" size={20} />
           IP Rotation Performance
@@ -144,6 +180,32 @@
             </div>
           {:else}
             <div class="text-sm text-slate-500 dark:text-slate-400">IP rotation stats not available</div>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Top Pipelines -->
+      <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm lg:col-span-2">
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+          <Icon name="star" size={20} />
+          Top Pipelines
+        </h2>
+        <div class="space-y-2">
+          {#if stats.top_pipelines && stats.top_pipelines.length}
+            {#each stats.top_pipelines as p}
+              <div class="flex items-center justify-between">
+                <div class="min-w-0">
+                  <div class="font-medium truncate">{p.name}</div>
+                  <div class="text-xs text-slate-500">{p.company} · {p.id}</div>
+                </div>
+                <div class="text-right">
+                  <div class="font-medium">{(p.quality_score*100).toFixed(0)}%</div>
+                  <div class="text-xs text-slate-500">{p.runs} runs</div>
+                </div>
+              </div>
+            {/each}
+          {:else}
+            <div class="text-sm text-slate-500">No pipeline rankings available yet</div>
           {/if}
         </div>
       </div>
@@ -183,24 +245,3 @@
     </div>
   {/if}
 </div>
-
-<script lang="ts">
-  import { debugTestExtraction } from '$lib/pipelinesV2';
-
-  let testUrl = '';
-  let debugResult: any = null;
-  let debugLoading = false;
-
-  async function runDebugTest() {
-    if (!testUrl?.trim()) return;
-
-    try {
-      debugLoading = true;
-      debugResult = await debugTestExtraction(testUrl);
-    } catch (e: any) {
-      debugResult = { error: e.message || 'Test failed' };
-    } finally {
-      debugLoading = false;
-    }
-  }
-</script>

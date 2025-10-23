@@ -1,8 +1,7 @@
 import { patchPipelineV2, type PipelineV2Patch } from './pipelinesV2';
 
 export type V2StepKey = 'intake' | 'jd' | 'profile' | 'analysis' | 'ats' | 'actions' | 'export';
-// Public step order: hide ATS and Actions from the main step navigation
-export const v2StepOrder: V2StepKey[] = ['intake', 'jd', 'profile', 'analysis', 'export'];
+export const v2StepOrder: V2StepKey[] = ['intake', 'jd', 'profile', 'analysis', 'ats', 'actions', 'export'];
 
 export const v2StepPaths: Record<V2StepKey, string> = {
   intake: '/app/v2/intake',

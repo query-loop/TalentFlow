@@ -5,6 +5,9 @@ from app import ingest
 from app import chroma_client
 from app import storage
 from app.agents.parser_agent import extract_profile_from_text
+from app.models import SessionLocal, PipelineV2Record
+from app.agents.skill_normalizer import normalize_skills
+from app.agents.scorer import score_profile
 import logging
 import json
 
@@ -56,10 +59,68 @@ def parse_resume_task(self, candidate_id: str, bucket: str, object_key: str, hf_
 
         # store parsed JSON back to MinIO under parsed/{candidate_id}.json
         parsed_key = f"parsed/{candidate_id}.json"
-        storage.upload_bytes(json.dumps(parsed).encode("utf-8"), parsed_key, content_type="application/json", client=client, bucket=bucket)
+        try:
+            storage.upload_bytes(json.dumps(parsed).encode("utf-8"), parsed_key, content_type="application/json", client=client, bucket=bucket)
+        except Exception:
+            # non-fatal; continue
+            pass
 
         # trigger ingest task (index full resume text into chroma)
         ingest_job = ingest_resume_task.delay(candidate_id, text, metadata={"source": "parse_resume_task"})
+
+        # Update pipeline record artifacts/statuses if this candidate_id maps to a pipeline
+        try:
+            with SessionLocal() as db:
+                row = db.get(PipelineV2Record, candidate_id)
+                if row:
+                    data = json.loads(row.statuses_json or "{}") or {"statuses": {}, "artifacts": {}}
+                    statuses = data.get("statuses", {})
+                    artifacts = data.get("artifacts", {})
+
+                    # Attach parsed profile to artifacts
+                    artifacts.setdefault("resume", {})
+                    artifacts["resume"].update({"parsed_key": parsed_key, "parsed": parsed})
+
+                    # Normalize skills and store under profile for later steps
+                    try:
+                        normalized = normalize_skills(parsed.get("skills", []) or [])
+                    except Exception:
+                        normalized = parsed.get("skills", []) or []
+                    artifacts["profile"] = {"parsed": parsed, "normalized_skills": normalized}
+
+                    # If JD description exists, compute ATS score immediately
+                    jd_desc = ""
+                    if artifacts.get("jd") and isinstance(artifacts.get("jd"), dict):
+                        jd_desc = (artifacts.get("jd") or {}).get("description", "") or ""
+                    elif row.jd_id:
+                        # JD may be a URL; leave blank if not fetched yet
+                        jd_desc = ""
+
+                    if jd_desc:
+                        try:
+                            ats = score_profile(parsed, {"description": jd_desc, "top_keywords": []})
+                            artifacts["ats"] = ats
+                            statuses.setdefault("ats", "complete")
+                        except Exception:
+                            # scoring failure is non-fatal
+                            artifacts.setdefault("ats", {})["error"] = "scoring_failed"
+
+                    # mark profile as complete
+                    statuses.setdefault("profile", "complete")
+
+                    # also record ingest task id for visibility
+                    try:
+                        artifacts["resume"]["ingest_task_id"] = getattr(ingest_job, "id", None)
+                    except Exception:
+                        pass
+
+                    row.statuses_json = json.dumps({"statuses": statuses, "artifacts": artifacts})
+                    db.add(row)
+                    db.commit()
+                    db.refresh(row)
+        except Exception:
+            # Be defensive: any DB update failure should not crash the task
+            logger.exception("Failed to update pipeline record after parsing resume")
 
         return {"ok": True, "parsed_key": parsed_key, "ingest_task_id": getattr(ingest_job, 'id', None)}
     except Exception as e:
