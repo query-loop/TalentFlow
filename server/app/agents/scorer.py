@@ -13,6 +13,16 @@ from typing import Dict, Any, List
 import math
 from app.agents.embedder import embed_texts
 
+# Optional FAISS support
+_HAS_FAISS = False
+try:
+    import faiss  # type: ignore
+    import numpy as np
+    _HAS_FAISS = True
+except Exception:
+    faiss = None  # type: ignore
+    np = None  # type: ignore
+
 
 def _cosine(a: List[float], b: List[float]) -> float:
     da = sum(x * x for x in a) ** 0.5
@@ -57,10 +67,33 @@ def score_profile(profile: Dict[str, Any], job: Dict[str, Any], embed_model: str
     job_text = job.get("text", "")
     keywords = job.get("keywords", [])
 
-    # embeddings
-    p_emb = embed_texts([profile_text], model_name=embed_model)[0]
-    j_emb = embed_texts([job_text], model_name=embed_model)[0]
-    emb_sim = _cosine(p_emb, j_emb)
+    # embeddings + optional FAISS path
+    try:
+        p_emb = embed_texts([profile_text], model_name=embed_model)[0]
+        j_emb = embed_texts([job_text], model_name=embed_model)[0]
+    except Exception:
+        p_emb = [0.0]
+        j_emb = [0.0]
+
+    emb_sim = 0.0
+    # If faiss is available and requested, use it for a more robust vector similarity
+    if _HAS_FAISS and (embed_model == 'faiss' or embed_model is None):
+        try:
+            # build index for the single job vector and search with profile vector
+            dim = len(j_emb)
+            xb = np.array([j_emb], dtype='float32')
+            xq = np.array([p_emb], dtype='float32')
+            # normalize for cosine via inner product on normalized vectors
+            faiss.normalize_L2(xb)
+            faiss.normalize_L2(xq)
+            index = faiss.IndexFlatIP(dim)
+            index.add(xb)
+            D, I = index.search(xq, 1)
+            emb_sim = float(D[0][0]) if D.size else 0.0
+        except Exception:
+            emb_sim = _cosine(p_emb, j_emb)
+    else:
+        emb_sim = _cosine(p_emb, j_emb)
 
     kw_cov = _keyword_coverage(keywords, profile_text, profile.get("skills", []))
     ats = _ats_checks(profile)

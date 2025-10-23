@@ -126,8 +126,12 @@
             {/if}
 
             {#if (pipe.artifacts as any).jd.description}
-              <div class="mt-3 max-h-[20rem] overflow-auto rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-3">
-                {@html highlightImportant((pipe.artifacts as any).jd.description, (pipe.artifacts as any).jd.key_requirements || [])}
+              <!-- Show a short snippet/summary in the profile view to avoid duplicating the full JD page -->
+              <div class="mt-3">
+                <div class="text-xs text-slate-500 mb-2">Job description (preview)</div>
+                <div class="max-h-40 overflow-auto rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-3 text-xs">
+                  {@html highlightImportant(((pipe.artifacts as any).jd.description || '').slice(0, 1200) + ((pipe.artifacts as any).jd.description && (pipe.artifacts as any).jd.description.length > 1200 ? '\n\n... (truncated - view full JD on the JD tab)' : ''), (pipe.artifacts as any).jd.key_requirements || [])}
+                </div>
               </div>
             {/if}
           {:else}

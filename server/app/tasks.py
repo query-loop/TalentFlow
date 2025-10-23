@@ -80,6 +80,12 @@ def parse_resume_task(self, candidate_id: str, bucket: str, object_key: str, hf_
                     # Attach parsed profile to artifacts
                     artifacts.setdefault("resume", {})
                     artifacts["resume"].update({"parsed_key": parsed_key, "parsed": parsed})
+                    # Also expose the raw parsed text for immediate UI consumption
+                    # parser_agent includes `raw_text` when available; fall back to the original text
+                    try:
+                        artifacts["resume"]["text"] = parsed.get("raw_text") or text
+                    except Exception:
+                        artifacts["resume"]["text"] = text
 
                     # Normalize skills and store under profile for later steps
                     try:
