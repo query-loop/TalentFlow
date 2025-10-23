@@ -60,6 +60,13 @@
   }
   
   $: if (id) loadPipeline();
+
+  function formatJd(text: string): string {
+    if (!text) return '';
+    // Normalize multiple blank lines and trim
+    const normalized = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    return normalized;
+  }
   
   // Track stream per pipeline ID to prevent reconnections
   let streamForId: string | null = null;
@@ -156,7 +163,7 @@
           <div class="text-xs text-slate-600 dark:text-slate-400 mb-3">{(pipe.artifacts as any).jd.company || pipe.company}</div>
         {/if}
         {#if (pipe.artifacts as any).jd.description}
-          <pre class="whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-700 rounded p-3">{(pipe.artifacts as any).jd.description}</pre>
+          <pre class="whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-700 rounded p-3">{formatJd((pipe.artifacts as any).jd.description)}</pre>
         {/if}
         {#if (pipe.artifacts as any).jd.extraction_metadata}
           <div class="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs">
