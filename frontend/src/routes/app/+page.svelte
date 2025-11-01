@@ -21,6 +21,7 @@
   // Recent generated resumes (from generate page)
   type SavedResume = { id: string; name: string; when: number; job?: string; result: { summary?: string; skills?: string[]; experience?: string[] } };
   let recentResumes: SavedResume[] = [];
+  let dashboardUpdatedAt: string | null = null;
   // Quick tasks config and drag-sort state
   type QuickTask = { id: string; label: string; href: string; icon: any };
   let quickTasks: QuickTask[] = [
@@ -234,6 +235,8 @@
   await loadPipelines();
 
     loading = false;
+    // Derive a dashboard updated timestamp: prefer explicit lastGeneratedAt, else most recent resume time
+    dashboardUpdatedAt = lastGeneratedAt || (recentResumes && recentResumes.length ? new Date(recentResumes[0].when).toISOString() : null);
   });
 
   $: regroupRecent();
@@ -260,18 +263,22 @@
     <div class="border rounded-lg bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 p-3">
       <div class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400"><Icon name="building" size={14}/> Companies you top at</div>
       <div class="text-xl font-semibold">{loading ? '…' : companiesCount || '—'}</div>
+        <div class="text-xs text-gray-500 mt-1">Updated: {dashboardUpdatedAt ? new Date(dashboardUpdatedAt).toLocaleString() : '—'}</div>
     </div>
     <div class="border rounded-lg bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 p-3">
       <div class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400"><Icon name="clock" size={14}/> Last generated</div>
       <div class="text-xl font-semibold">{lastGeneratedAt ? new Date(lastGeneratedAt).toLocaleString() : '—'}</div>
+        <div class="text-xs text-gray-500 mt-1">Updated: {dashboardUpdatedAt ? new Date(dashboardUpdatedAt).toLocaleString() : '—'}</div>
     </div>
     <div class="border rounded-lg bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 p-3">
       <div class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400"><Icon name="shield-check" size={14}/> Last ATS score</div>
       <div class="text-xl font-semibold">{lastAtsScore !== null ? `${lastAtsScore}%` : '—'}</div>
+        <div class="text-xs text-gray-500 mt-1">Updated: {dashboardUpdatedAt ? new Date(dashboardUpdatedAt).toLocaleString() : '—'}</div>
     </div>
     <div class="border rounded-lg bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 p-3">
       <div class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400"><Icon name="tag" size={14}/> Keywords found</div>
       <div class="text-xl font-semibold">{lastKeywordsCount ?? '—'}</div>
+        <div class="text-xs text-gray-500 mt-1">Updated: {dashboardUpdatedAt ? new Date(dashboardUpdatedAt).toLocaleString() : '—'}</div>
     </div>
   </div>
 
@@ -280,7 +287,7 @@
     <div class="flex items-center justify-between mb-2">
       <div class="text-sm text-gray-700 dark:text-gray-200">Recent curation pipelines</div>
       <div class="flex items-center gap-2">
-        <a href="/app/pipelines" class="inline-flex items-center text-xs px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition">Show all</a>
+        <a href="https://orange-parakeet-wrv5wrwg59xhv9rp-5174.app.github.dev/app/pipelines-v2" class="inline-flex items-center text-xs px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition" target="_blank" rel="noopener noreferrer">Show all</a>
         <button class="inline-flex items-center justify-center w-7 h-7 border border-slate-200 dark:border-slate-700 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition"
                 aria-label="Toggle recent curation pipelines"
                 aria-expanded={pipelinesExpanded}
@@ -458,22 +465,7 @@
       </div>
     </div>
   </div>
-
-  <!-- System status (compact) -->
-  <div class="border rounded-lg bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-    <div class="px-4 py-2 border-b border-slate-200 dark:border-slate-700 text-sm text-gray-600 dark:text-gray-400">System status</div>
-    <div class="p-4 text-sm">
-      {#if loading}
-        Checking...
-      {:else}
-        {#if backendOk}
-          <div class="text-emerald-700 dark:text-emerald-400">Backend connected. {endpoints.length} endpoints available.</div>
-        {:else}
-          <div class="text-red-700 dark:text-red-400">Backend not reachable. {err}</div>
-        {/if}
-      {/if}
-    </div>
-  </div>
+  
 </section>
 
 <style>
