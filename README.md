@@ -19,4 +19,5 @@
 	- See `tools/` for scripts and utilities.
 
 ## Research Paper
-[1]S. Prajapati, P. Abbad, V. Shuklaand S. Kapadi, “TalentFlow: An AI-Driven Talent Management Platform Integrating Machine Learning and Human-Centric Design”, Jan. 2026. doi: 10.5281/zenodo.18414466.
+[1] S. Prajapati, P. Abbad, V. Shukla, and S. Kapadi, “TalentFlow: An AI-Driven Talent Management Platform Integrating Machine Learning and Human-Centric Design”, Jan. 2026.  
+**DOI:** [10.5281/zenodo.18414466](https://doi.org/10.5281/zenodo.18414466)
