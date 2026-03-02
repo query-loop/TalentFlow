@@ -2,7 +2,6 @@
   import { page } from '$app/stores';
   import { getPipelineV2, type PipelineV2 } from '$lib/pipelinesV2';
   import Icon from '$lib/Icon.svelte';
-  import { v2PathForStep } from '$lib/pipelineTrackerV2';
 
   $: id = $page.params.id;
   let pipe: PipelineV2 | null = null;
@@ -40,7 +39,7 @@
     <div class="flex items-center justify-between">
       <h1 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Analysis</h1>
       <div class="text-xs px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-        <Icon name="activity" size={12} class="inline mr-1" /> Overview and insights
+        <Icon name="info" size={12} class="inline mr-1" /> Overview and insights
       </div>
     </div>
 
@@ -71,17 +70,17 @@
 
       <!-- Quick links -->
       <div class="grid md:grid-cols-2 gap-4">
-        <a href={v2PathForStep('gaps', id)} class="block p-4 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition">
+        <a href={`/app/pipeline-v2/${id}/gaps`} class="block p-4 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition">
           <div class="flex items-center justify-between">
             <div class="text-sm font-medium">Gaps</div>
-            <Icon name="x-circle" size={16} class="text-red-500" />
+            <Icon name="alert-circle" size={16} class="text-red-500" />
           </div>
           <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">{scoring.gaps?.length || 0} items</div>
         </a>
-        <a href={v2PathForStep('differentiators', id)} class="block p-4 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition">
+        <a href={`/app/pipeline-v2/${id}/differentiators`} class="block p-4 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition">
           <div class="flex items-center justify-between">
             <div class="text-sm font-medium">Differentiators</div>
-            <Icon name="star" size={16} class="text-blue-500" />
+            <Icon name="sparkles" size={16} class="text-blue-500" />
           </div>
           <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">{scoring.strengths?.length || 0} items</div>
         </a>

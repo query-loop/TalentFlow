@@ -1,53 +1,110 @@
 <script lang="ts">
   import StepFooterV2 from '$lib/components/StepFooterV2.svelte';
   import { page } from '$app/stores';
-  import { getPipelineV2, patchPipelineV2, type PipelineV2 } from '$lib/pipelinesV2';
-  import Icon from '$lib/Icon.svelte';
+  import { getPipelineV2, recomputeAtsV2, type PipelineV2 } from '$lib/pipelinesV2';
+  import AtsGauge from '$lib/components/AtsGauge.svelte';
 
   $: id = $page.params.id;
   let pipe: PipelineV2 | null = null;
   let loading = true;
   let error: string | null = null;
-  let coverage: number | null = null;
+  let runBusy = false;
+  let autoTried = false;
+
+  let pct: number | null = null;
   let matched: string[] = [];
   let missing: string[] = [];
+  let structureMissing: string[] = [];
+  $: pct = getAtsPercent(pipe);
+  $: matched = getMatched(pipe);
+  $: missing = getMissing(pipe);
+  $: structureMissing = getStructureMissing(pipe);
 
   async function load() {
     if (!id) return;
     try {
       loading = true; error = null; pipe = await getPipelineV2(id);
-      computeCoverage();
+
+      // Show ATS immediately: if it's missing but we already have JD+resume, recompute ATS only.
+      if (!autoTried && pipe && getAtsPercent(pipe) === null && canComputeAts(pipe)) {
+        autoTried = true;
+        await recomputeAts();
+      }
     } catch (e:any) { error = e?.message || 'Failed to load pipeline'; }
     finally { loading = false; }
   }
 
-  function tokenize(text: string): string[] {
-    return (text || '')
-      .toLowerCase()
-      .replace(/[\W_]+/g, ' ')
-      .split(/\s+/)
-      .filter(Boolean);
+  function canComputeAts(p: PipelineV2): boolean {
+    const a: any = (p.artifacts || {}) as any;
+
+    const jd = a.jd;
+    const jdText = (jd && typeof jd === 'object')
+      ? (jd.description || jd.descriptionRaw || (jd.extracted && (jd.extracted.description || jd.extracted.descriptionRaw || jd.extracted.raw || jd.extracted.text)))
+      : null;
+    const hasJd = Boolean((jdText && String(jdText).trim()) || (p.jdId && String(p.jdId).startsWith('manual:') && String(p.jdId).slice('manual:'.length).trim()));
+
+    const hasProfile = Boolean(a.profile && typeof a.profile === 'object' && a.profile.parsed);
+    const hasResume = Boolean(
+      hasProfile ||
+      (a.resume && typeof a.resume === 'object' && a.resume.text) ||
+      (p.resumeId && String(p.resumeId).trim())
+    );
+
+    return hasJd && hasResume;
   }
 
-  function computeCoverage() {
-    const jd = pipe?.artifacts && (pipe.artifacts as any).jd;
-    const resume = pipe?.artifacts && (pipe.artifacts as any).resume;
-    const keys: string[] = jd?.key_requirements || [];
-    if (!keys.length || !resume?.text) {
-      coverage = null; matched = []; missing = [];
-      return;
+  function getAtsPercent(p: PipelineV2 | null): number | null {
+    const ats = p?.artifacts && (p.artifacts as any).ats;
+    if (!ats || typeof ats !== 'object') return null;
+    if (typeof ats.aggregate === 'number') return Math.max(0, Math.min(100, Math.round(ats.aggregate * 100)));
+    if (typeof ats.coverage === 'number') return Math.max(0, Math.min(100, Math.round(ats.coverage)));
+    if (typeof ats.percent === 'number') return Math.max(0, Math.min(100, Math.round(ats.percent)));
+    if (typeof ats.score === 'number') {
+      const v = ats.score;
+      return Math.max(0, Math.min(100, Math.round(v <= 1 ? v * 100 : v)));
     }
-    const words = new Set(tokenize(resume.text));
-    matched = keys.filter(k => tokenize(k).some(w => words.has(w)));
-    missing = keys.filter(k => !matched.includes(k));
-    coverage = Math.round((matched.length / keys.length) * 100);
+    return null;
   }
 
-  async function saveAtsArtifacts() {
-    if (!pipe || coverage === null) return;
-    const artifacts: any = { ...(pipe.artifacts || {}) };
-    artifacts.ats = { coverage, matched, missing, updatedAt: Date.now() };
-    try { pipe = await patchPipelineV2(pipe.id, { artifacts }); } catch (e:any) { error = e?.message || 'Save failed'; }
+  function getMatched(p: PipelineV2 | null): string[] {
+    const a = p?.artifacts && (p.artifacts as any).ats;
+    if (!a || typeof a !== 'object') return [];
+    const mk = Array.isArray(a.matched_keywords) ? a.matched_keywords
+      : Array.isArray(a.matched) ? a.matched
+      : [];
+    return mk.map((x: any) => String(x)).filter(Boolean);
+  }
+
+  function getMissing(p: PipelineV2 | null): string[] {
+    const a = p?.artifacts && (p.artifacts as any).ats;
+    if (!a || typeof a !== 'object') return [];
+    const ms = Array.isArray(a.missing_keywords) ? a.missing_keywords
+      : Array.isArray(a.missing) ? a.missing
+      : [];
+    return ms.map((x: any) => String(x)).filter(Boolean);
+  }
+
+  function getStructureMissing(p: PipelineV2 | null): string[] {
+    const a = p?.artifacts && (p.artifacts as any).ats;
+    const d = a && typeof a === 'object' ? a.structure_details : null;
+    if (!d || typeof d !== 'object') return [];
+    const out: string[] = [];
+    if (d.has_skills === false) out.push('Skills section not detected');
+    if (d.has_experience === false) out.push('Experience section not detected');
+    if (d.has_education === false) out.push('Education section not detected');
+    return out;
+  }
+
+  async function recomputeAts() {
+    if (!pipe || runBusy) return;
+    runBusy = true;
+    try {
+      pipe = await recomputeAtsV2(pipe.id);
+    } catch (e: any) {
+      error = e?.message || 'Failed to recompute ATS';
+    } finally {
+      runBusy = false;
+    }
   }
 
   $: if (id) load();
@@ -65,52 +122,65 @@
 {:else}
   <div class="p-4 space-y-4">
     <div class="flex items-center justify-between">
-      <div class="text-sm font-semibold">ATS Keyword Coverage</div>
-      <div class="text-xs text-slate-500">Based on JD key requirements vs resume</div>
+      <div class="text-sm font-semibold">ATS Score</div>
+      <button class="px-3 py-1.5 rounded bg-blue-600 text-white text-xs" on:click={recomputeAts} disabled={runBusy}>
+        {runBusy ? 'Running…' : 'Recompute'}
+      </button>
     </div>
 
-    {#if coverage === null}
-      <div class="border rounded p-4 bg-white dark:bg-slate-800 text-sm text-slate-600">No JD key requirements or resume text available. Add JD in Intake and attach a resume to the pipeline.</div>
-    {:else}
-      <div class="border rounded p-4 bg-white dark:bg-slate-800 space-y-3">
-        <div class="flex items-center gap-3">
-          <div class="text-3xl font-bold">{coverage}%</div>
-          <div class="text-xs text-slate-600">Keyword match</div>
-        </div>
+    <div class="border rounded p-4 bg-white dark:bg-slate-800 flex items-center justify-center">
+      <AtsGauge value={getAtsPercent(pipe)} size={220} label="ATS" />
+    </div>
 
-        <div class="grid md:grid-cols-2 gap-4 text-sm">
-          <div>
-            <div class="font-medium mb-2">Matched ({matched.length})</div>
-            {#if matched.length}
-              <ul class="list-disc pl-5 text-xs">
-                {#each matched as m}
-                  <li>{m}</li>
-                {/each}
-              </ul>
-            {:else}
-              <div class="text-xs text-slate-500">No matches found.</div>
-            {/if}
-          </div>
-          <div>
-            <div class="font-medium mb-2">Missing ({missing.length})</div>
-            {#if missing.length}
-              <ul class="list-disc pl-5 text-xs text-red-700 dark:text-red-300">
-                {#each missing as mm}
-                  <li>{mm}</li>
-                {/each}
-              </ul>
-            {:else}
-              <div class="text-xs text-slate-500">All key requirements present.</div>
-            {/if}
-          </div>
-        </div>
-
-        <div class="mt-3 flex items-center gap-2">
-          <button class="px-3 py-1.5 rounded bg-blue-600 text-white" on:click={saveAtsArtifacts}>Save ATS Results</button>
-          <div class="text-xs text-slate-500">Save matched/missing keywords to pipeline artifacts.</div>
-        </div>
+    <div class="border rounded p-4 bg-white dark:bg-slate-800">
+      <div class="text-sm font-semibold">Summary</div>
+      <div class="mt-1 text-sm text-slate-700 dark:text-slate-200">
+        {#if pct === null}
+          No ATS score yet. Click “Recompute” after JD + resume are attached.
+        {:else if pct >= 80}
+          Strong match. Your resume aligns well with this JD.
+        {:else if pct >= 60}
+          Good match. A few targeted additions could improve it.
+        {:else if pct >= 40}
+          Moderate match. Several JD requirements are missing or unclear.
+        {:else}
+          Low match. Consider tailoring skills/experience wording to the JD.
+        {/if}
       </div>
-    {/if}
+      {#if structureMissing.length}
+        <div class="mt-2 text-xs text-rose-700 dark:text-rose-300">Structure gaps: {structureMissing.join(' · ')}</div>
+      {/if}
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="border rounded p-4 bg-white dark:bg-slate-800">
+        <div class="text-sm font-semibold">Strengths</div>
+        {#if matched.length}
+          <div class="mt-2 text-xs text-slate-600 dark:text-slate-300">Matched requirements ({matched.length})</div>
+          <ul class="mt-2 list-disc pl-5 text-xs text-slate-700 dark:text-slate-200 space-y-1">
+            {#each matched.slice(0, 12) as m}
+              <li>{m}</li>
+            {/each}
+          </ul>
+        {:else}
+          <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">No matched requirements found yet.</div>
+        {/if}
+      </div>
+      <div class="border rounded p-4 bg-white dark:bg-slate-800">
+        <div class="text-sm font-semibold">Weaknesses</div>
+        {#if missing.length}
+          <div class="mt-2 text-xs text-slate-600 dark:text-slate-300">Missing requirements ({missing.length})</div>
+          <ul class="mt-2 list-disc pl-5 text-xs text-rose-700 dark:text-rose-300 space-y-1">
+            {#each missing.slice(0, 12) as mm}
+              <li>{mm}</li>
+            {/each}
+          </ul>
+          <div class="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Tip: add only true experience/skills; keep wording consistent with the JD.</div>
+        {:else}
+          <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">No missing requirements detected.</div>
+        {/if}
+      </div>
+    </div>
 
     <StepFooterV2 current="ats" pipelineId={id} />
   </div>

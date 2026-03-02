@@ -21,19 +21,13 @@
     intake: 'Intake',
     jd: 'Job description',
     profile: 'Profile',
-    analysis: 'Analysis',
-    ats: 'ATS',
-    actions: 'Actions',
-    export: 'Export'
+    ats: 'ATS'
   };
   const descs: Partial<Record<V2StepKey, string>> = {
     intake: 'Initial pipeline setup and configuration.',
     jd: 'View and refine the extracted job description details.',
     profile: 'Build and customize your professional profile.',
-    analysis: 'Overall scoring summary and quick insights.',
-    ats: 'Score against ATS heuristics and improve parsing.',
-    actions: 'Define action items and next steps.',
-    export: 'Export or share the final resume and artifacts.'
+    ats: 'Score against ATS heuristics and improve parsing.'
   };
 
   function getStepColor(step: V2StepKey, pipelineData: PipelineV2): string {
@@ -148,9 +142,7 @@
             <div class="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-3">
               <div class="flex items-center gap-2 mb-2">
                 {#if currentStep === 'jd'}<Icon name="tag" size={16} />{/if}
-                {#if currentStep === 'draft'}<Icon name="sparkles" size={16} />{/if}
                 {#if currentStep === 'ats'}<Icon name="shield-check" size={16} />{/if}
-                {#if currentStep === 'export'}<Icon name="layers" size={16} />{/if}
                 <span class="font-medium text-slate-900 dark:text-slate-100">{titles[currentStep]}</span>
               </div>
               {#if descs[currentStep]}

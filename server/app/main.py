@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import ats, crawl, extract, generate, jd, keywords, pipelines, pipelines_v2, extraction_test, resume, qa, library, rapidapi_jobs, scoring
+from app.routers import ats, crawl, extract, generate, jd, keywords, pipelines_v2, extraction_test, resume, qa, library, rapidapi_jobs, scoring
 from app.routers import agents
 from app.routers import agents_v1
 from .models import init_db, SessionLocal
@@ -51,7 +51,6 @@ app.include_router(jd.router, prefix="/api/jd", tags=["jd"])
 app.include_router(generate.router, prefix="/api/generate", tags=["generate"])
 app.include_router(keywords.router, prefix="/api/keywords", tags=["keywords"])
 app.include_router(ats.router, prefix="/api/ats", tags=["ats"])
-app.include_router(pipelines.router, prefix="/api/pipelines", tags=["pipelines"])
 app.include_router(pipelines_v2.router, prefix="/api/pipelines-v2", tags=["pipelines-v2"])
 app.include_router(rapidapi_jobs.router, prefix="/api/rapidapi-jobs", tags=["rapidapi-jobs"])
 app.include_router(extraction_test.router, prefix="/api/extraction", tags=["extraction"])

@@ -2,9 +2,8 @@ import { PUBLIC_API_BASE } from '$env/static/public';
 
 export type V2StepStatus = 'pending' | 'active' | 'complete' | 'failed';
 // Full V2 step set to match backend API
-export type V2StepKey = 'intake' | 'jd' | 'profile' | 'analysis' | 'ats' | 'actions' | 'export';
+export type V2StepKey = 'intake' | 'jd' | 'profile' | 'gaps' | 'differentiators' | 'draft' | 'compliance' | 'ats' | 'benchmark';
 export type V2Statuses = Record<V2StepKey, V2StepStatus>;
-
 export type PipelineV2 = {
   id: string;
   name: string;
@@ -54,10 +53,18 @@ export async function runPipelineV2(id: string): Promise<PipelineV2RunResult> {
   return http(`${BASE}/api/pipelines-v2/${id}/run`, { method: 'POST' });
 }
 
+export async function recomputeAtsV2(id: string): Promise<PipelineV2> {
+  return http(`${BASE}/api/pipelines-v2/${id}/ats/recompute`, { method: 'POST' });
+}
+
 export async function getExtractionStats(): Promise<any> {
   return http(`${BASE}/api/pipelines-v2/stats/extraction`);
 }
 
 export async function retryJdAnalysis(id: string): Promise<PipelineV2> {
   return http(`${BASE}/api/pipelines-v2/${id}/jd/retry`, { method: 'POST' });
+}
+
+export async function getPipelineReport(id: string): Promise<any> {
+  return http(`${BASE}/api/pipelines-v2/${id}/report`);
 }

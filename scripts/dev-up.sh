@@ -21,6 +21,8 @@ log() { echo "[dev] $*"; }
 # Auto-detect GitHub Codespaces and configure HMR if not already set
 if [ -n "${CODESPACE_NAME:-}" ]; then
   log "Detected GitHub Codespaces environment"
+  # Use secure websocket (wss) + client port 443 for the public forwarded URL.
+  # These can still be overridden by setting HMR_PROTOCOL/HMR_HOST/HMR_CLIENT_PORT.
   export HMR_PROTOCOL="${HMR_PROTOCOL:-wss}"
   export HMR_HOST="${HMR_HOST:-${CODESPACE_NAME}-5173.app.github.dev}"
   export HMR_CLIENT_PORT="${HMR_CLIENT_PORT:-443}"

@@ -13,6 +13,7 @@ from app.utils.queue import enqueue_jd_analysis, get_job, get_client, JD_QUEUE_K
 from app.utils.advanced_fetch import IPRotationManager
 from app.utils.antibot import antibot
 from app.utils.stealth_browser import stealth_browser
+from app.utils.playwright_fetcher import fetch_with_playwright
 import asyncio
 from app import ingest as ingest_module
 from app.agents.parser_agent import extract_profile_from_text
@@ -26,6 +27,116 @@ from app.chroma_client import ChromaClient
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.get("/{id}/report")
+def pipeline_report(id: str):
+    """Generate a simple JD-relative report for the pipeline using stored artifacts.
+
+    Returns a JSON object with score, reasons and sections similar to ATSResponse.
+    """
+    db = SessionLocal()
+    try:
+        row = db.get(PipelineV2Record, id)
+        if not row:
+            # try legacy migration
+            row = _migrate_legacy_if_needed(db, id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Pipeline not found")
+
+        data = json.loads(row.statuses_json or "{}") or {}
+        artifacts = data.get("artifacts", {})
+
+        # If a report was already generated and persisted in artifacts, return it
+        # only if it looks like the newer ATS-based format. Otherwise recompute
+        # to avoid locking in an older, simplistic report.
+        if isinstance(artifacts, dict):
+            existing = artifacts.get("report")
+            if isinstance(existing, dict):
+                existing_data = existing.get("data")
+                if isinstance(existing_data, dict) and existing_data.get("score") is not None:
+                    sections = existing_data.get("sections")
+                    if isinstance(sections, dict) and isinstance(sections.get("ats"), dict):
+                        return existing_data
+
+        jd_text = ""
+        resume_text = ""
+        profile_parsed: Dict[str, Any] | None = None
+        normalized_skills: Any = None
+        # Attempt to get jd text from artifacts
+        if artifacts.get("jd") and isinstance(artifacts.get("jd"), dict):
+            jd_obj = artifacts.get("jd") or {}
+            jd_text = jd_obj.get("description") or jd_obj.get("descriptionRaw") or ""
+            if not jd_text and isinstance(jd_obj.get("extracted"), dict):
+                extracted = jd_obj.get("extracted") or {}
+                jd_text = extracted.get("description") or extracted.get("descriptionRaw") or extracted.get("raw") or extracted.get("text") or ""
+        # Profile parsed/normalized (preferred)
+        if artifacts.get("profile") and isinstance(artifacts.get("profile"), dict):
+            profile_parsed = (artifacts.get("profile") or {}).get("parsed")
+            normalized_skills = (artifacts.get("profile") or {}).get("normalized_skills")
+        # Resume text
+        if artifacts.get("resume") and isinstance(artifacts.get("resume"), dict):
+            resume_text = (artifacts.get("resume") or {}).get("text") or ""
+
+        # Fallbacks: if jdId is a manual prefix in jd_id field
+        if not jd_text and row.jd_id and str(row.jd_id).startswith("manual:"):
+            jd_text = row.jd_id[len("manual:"):]
+
+        # Prefer richer scoring if we have JD + profile.
+        try:
+            if not profile_parsed and resume_text:
+                profile_parsed = extract_profile_from_text(resume_text)
+            if isinstance(profile_parsed, dict) and jd_text:
+                jd_obj = artifacts.get("jd") if isinstance(artifacts, dict) else None
+                reqs: List[str] = []
+                if isinstance(jd_obj, dict) and isinstance(jd_obj.get("key_requirements"), list):
+                    reqs = [str(x) for x in (jd_obj.get("key_requirements") or []) if str(x).strip()]
+                if not reqs:
+                    reqs = _extract_key_requirements(jd_text)
+
+                profile_for_score = dict(profile_parsed)
+                if normalized_skills is not None:
+                    profile_for_score["normalized_skills"] = normalized_skills
+
+                s = score_profile(profile_for_score, {"text": jd_text, "keywords": reqs})
+                pct = round(float(s.get("aggregate", 0.0)) * 100.0, 2)
+                reasons: List[str] = []
+                if isinstance(s.get("embedding"), (int, float)):
+                    reasons.append(f"Semantic match: {round(float(s['embedding']) * 100)}%")
+                if isinstance(s.get("keyword_coverage"), (int, float)):
+                    reasons.append(f"Requirement coverage: {round(float(s['keyword_coverage']) * 100)}%")
+                missing = s.get("missing_keywords") if isinstance(s.get("missing_keywords"), list) else []
+                if missing:
+                    reasons.append("Missing key requirements: " + ", ".join([str(x) for x in missing[:8]]))
+                sections = {
+                    "summary": ("Good match" if pct >= 60 else "Needs improvement"),
+                    "ats": s,
+                }
+                return {"score": pct, "reasons": reasons, "sections": sections}
+        except Exception as e:
+            logger.warning(f"report scoring failed for {id}: {e}")
+
+        # Fallback: naive keyword overlap
+        jd_words = set(re.findall(r"\w+", (jd_text or "").lower()))
+        resume_words = set(re.findall(r"\w+", (resume_text or "").lower()))
+        overlap = len(jd_words & resume_words)
+        score = round(min(100.0, (overlap / max(1, len(jd_words))) * 100.0), 2)
+        reasons: List[str] = []
+        if score > 75:
+            reasons.append("Strong keyword overlap")
+        elif score > 40:
+            reasons.append("Moderate keyword overlap; consider adding more JD keywords")
+        else:
+            reasons.append("Low keyword overlap; tailor resume to JD requirements")
+
+        sections = {
+            "summary": ("Good match" if score > 60 else "Needs improvement"),
+            "skills": ", ".join(sorted(jd_words & resume_words))
+        }
+
+        return {"score": score, "reasons": reasons, "sections": sections}
+    finally:
+        db.close()
 
 class EnhancedJDExtractor:
     """
@@ -101,24 +212,43 @@ class EnhancedJDExtractor:
             self.extraction_stats["browser_automation_used"] += 1
             logger.info(f"🤖 Attempting stealth browser extraction for {pipeline_id}")
             
-            # Check if domain is known to have challenges
-            domain = url.split('/')[2] if url.startswith('http') else url
-            if antibot.is_domain_blocked(domain) or 'cloudflare' in url.lower():
-                html, status = await stealth_browser.solve_cloudflare_challenge(url)
-            else:
-                html, status = await stealth_browser.fetch_with_browser(url)
+            # First, try Playwright (better at JS-rendered pages)
+            try:
+                html, status = await fetch_with_playwright(url, timeout=15.0)
+                if html and len(html) > 1000:
+                    logger.info(f"Playwright fetch returned content for {pipeline_id}")
+                else:
+                    # Fallback to existing stealth browser
+                    domain = url.split('/')[2] if url.startswith('http') else url
+                    if antibot.is_domain_blocked(domain) or 'cloudflare' in url.lower():
+                        html, status = await stealth_browser.solve_cloudflare_challenge(url)
+                    else:
+                        html, status = await stealth_browser.fetch_with_browser(url)
+            except Exception as e:
+                logger.warning(f"Playwright fetch failed, falling back to stealth browser: {e}")
+                domain = url.split('/')[2] if url.startswith('http') else url
+                if antibot.is_domain_blocked(domain) or 'cloudflare' in url.lower():
+                    html, status = await stealth_browser.solve_cloudflare_challenge(url)
+                else:
+                    html, status = await stealth_browser.fetch_with_browser(url)
             
-            if html and len(html) > 1000:
+            if html and len(html) > 0:
                 result = SimpleJobExtractor().extract(url, html)
                 result = self._enhance_extraction_data(result, html, url)
-                
+
                 if self._is_quality_extraction(result):
                     self.extraction_stats["successful_extractions"] += 1
-                    logger.info(f"✅ Stealth browser extraction successful for {pipeline_id}")
-                    return self._format_extraction_result(result, url, "stealth_browser")
-            
-            logger.warning(f"Stealth browser returned insufficient content for {pipeline_id}")
-            return self._format_error_result("Stealth browser extraction failed", url)
+                    logger.info(f"✅ Browser extraction successful for {pipeline_id}")
+                    # mark full success with whichever method supplied the html
+                    return self._format_extraction_result(result, url, "browser")
+                else:
+                    # Return a partial extraction result (contains description/raw) so UI can display JD boxes even if quality is low
+                    self.extraction_stats["fallback_used"] += 1
+                    logger.warning(f"Browser extraction returned low-quality data for {pipeline_id}; returning partial result")
+                    return self._format_extraction_result(result, url, "browser_partial")
+
+            logger.warning(f"Browser returned no content for {pipeline_id}")
+            return self._format_error_result("Browser extraction failed", url)
             
         except Exception as e:
             logger.error(f"Stealth browser extraction failed for {pipeline_id}: {e}")
@@ -274,8 +404,6 @@ class V2Statuses(BaseModel):
     compliance: str
     ats: str
     benchmark: str
-    actions: str
-    export: str
 
 class PipelineV2(BaseModel):
     id: str
@@ -309,7 +437,7 @@ _CACHE_GET = TTLCache(maxsize=1024, ttl=15)
 _CACHE_LIST = TTLCache(maxsize=1, ttl=10)
 
 V2_ORDER = [
-    "intake","jd","profile","gaps","differentiators","draft","compliance","ats","benchmark","actions","export"
+    "intake","jd","profile","gaps","differentiators","draft","compliance","ats","benchmark"
 ]
 
 def _ensure_single_active_v2(statuses: Dict[str, str]) -> Dict[str, str]:
@@ -550,7 +678,7 @@ async def create_pipeline_v2(body: PipelineV2Create, background: BackgroundTasks
         # Mark intake complete immediately
         data = json.loads(row.statuses_json or "{}") or {"statuses": {}, "artifacts": {}}
         st = data.get("statuses", {})
-        art = data.get("artifacts", {})
+        artifacts = data.get("artifacts", {})
         st.setdefault("intake", "complete")
         
         # Check if JD is manual text or URL
@@ -570,7 +698,7 @@ async def create_pipeline_v2(body: PipelineV2Create, background: BackgroundTasks
                 reqs = _extract_key_requirements(desc)
                 matched, total, pct, details = _coverage(desc, reqs)
                 
-                art["jd"] = {
+                artifacts["jd"] = {
                     "url": "manual",
                     "title": body.name,
                     "company": body.company,
@@ -590,7 +718,7 @@ async def create_pipeline_v2(body: PipelineV2Create, background: BackgroundTasks
                 # It's a URL - enqueue background analysis
                 try:
                     job_id = enqueue_jd_analysis(pid, body.jdId)
-                    art["jd_job_id"] = job_id
+                    artifacts["jd_job_id"] = job_id
                     # set JD status to pending (worker will flip to complete)
                     st.setdefault("jd", "pending")
                 except Exception:
@@ -617,7 +745,7 @@ async def create_pipeline_v2(body: PipelineV2Create, background: BackgroundTasks
                     artifacts.setdefault("resume", {})["error"] = str(e)
         
         # Optionally simulate profile ready once JD completes; worker will set profile when saving artifacts
-        row.statuses_json = json.dumps({"statuses": st, "artifacts": art})
+        row.statuses_json = json.dumps({"statuses": st, "artifacts": artifacts})
         db.add(row); db.commit(); db.refresh(row)
 
     pipe = PipelineV2(id=pid, name=body.name, createdAt=created, company=body.company, jdId=body.jdId, resumeId=body.resumeId, statuses=statuses, artifacts={})
@@ -715,6 +843,9 @@ async def stream_jd_ready(id: str, request: Request):
                             'etaSeconds': eta,
                             'message': msg,
                         }
+                        # If the worker provided an HTML snippet (live preview), include it so frontend can render a preview box
+                        if isinstance(job.get('artifacts'), dict) and job['artifacts'].get('html_snippet'):
+                            payload['htmlSnippet'] = job['artifacts'].get('html_snippet')
                         if isinstance(data, dict):
                             if 'stage' in data:
                                 payload['stage'] = data.get('stage')
@@ -891,8 +1022,64 @@ async def patch_pipeline_v2(id: str, body: PipelineV2Patch) -> PipelineV2:
             row.company = body.company
         if body.jdId is not None:
             row.jd_id = body.jdId
+            # If user provided manual JD text, immediately materialize artifacts.jd
+            if body.jdId and str(body.jdId).startswith("manual:"):
+                manual_text = str(body.jdId)[len("manual:"):]
+                logger.info(f"📝 Received manual JD text for pipeline {id}")
+                try:
+                    desc = normalize_jd_text(manual_text)
+                except Exception:
+                    desc = manual_text
+                reqs = _extract_key_requirements(desc)
+                matched, total, pct, details = _coverage(desc, reqs)
+                artifacts["jd"] = {
+                    "url": "manual",
+                    "title": row.name,
+                    "company": row.company,
+                    "description": desc,
+                    "extraction_metadata": {
+                        "method": "manual",
+                        "quality_score": 1.0,
+                        "timestamp": time.time(),
+                        "source": "user_input",
+                    },
+                    "key_requirements": reqs,
+                    "coverage": {"matched": matched, "total": total, "percent": round(pct, 2)},
+                    "matches": details,
+                }
+                statuses["jd"] = "complete"
+            else:
+                # Job URL changed; reset JD status so background analysis/run can recompute
+                if body.jdId:
+                    statuses["jd"] = "pending"
+                artifacts.pop("jd", None)
+
         if body.resumeId is not None:
             row.resume_id = body.resumeId
+            # If user provided manual resume text, parse immediately for smoother UX
+            if body.resumeId and str(body.resumeId).startswith("manual:"):
+                resume_text = str(body.resumeId)[len("manual:"):]
+                logger.info(f"📄 Received manual resume text for pipeline {id}")
+                try:
+                    parsed = extract_profile_from_text(resume_text)
+                except Exception as e:
+                    parsed = {"error": str(e), "raw_text": resume_text}
+                try:
+                    normalized = normalize_skills((parsed or {}).get("skills", []) or [])
+                    if normalized is None:
+                        normalized = {}
+                    elif isinstance(normalized, list):
+                        normalized = {"skills": normalized}
+                except Exception:
+                    normalized = {}
+                artifacts.setdefault("resume", {})
+                artifacts["resume"].update({"source": "manual", "text": resume_text})
+                artifacts["profile"] = {"parsed": parsed, "normalized_skills": normalized}
+                statuses["profile"] = "complete" if parsed and not (isinstance(parsed, dict) and parsed.get("error")) else "failed"
+            else:
+                if body.resumeId:
+                    statuses["profile"] = "pending"
+                artifacts.pop("profile", None)
         if body.statuses is not None and isinstance(body.statuses, dict):
             statuses = {**statuses, **body.statuses}
         if body.artifacts is not None and isinstance(body.artifacts, dict):
@@ -935,43 +1122,121 @@ async def run_pipeline_v2(id: str) -> RunResultV2:
                         log.append("intake: recorded")
 
                     elif step == "jd":
-                        if row.jd_id:
-                            extraction_result = await enhanced_extractor.extract_with_antibot(row.jd_id, pipeline_id=row.id)
-                            if extraction_result.get("success"):
-                                extracted = extraction_result["data"]
-                                desc = extracted.get("description", "")
+                        if not row.jd_id:
+                            log.append("jd: skipped (no jdId)")
+                        else:
+                            # If JD already exists, don't redo expensive extraction.
+                            existing = artifacts.get("jd") if isinstance(artifacts, dict) else None
+                            if isinstance(existing, dict) and (existing.get("description") or existing.get("descriptionRaw") or (isinstance(existing.get("extracted"), dict) and ((existing.get("extracted") or {}).get("description") or (existing.get("extracted") or {}).get("descriptionRaw") or (existing.get("extracted") or {}).get("raw") or (existing.get("extracted") or {}).get("text")))):
+                                log.append("jd: already complete")
+                                # Backfill `description` into the canonical slot for downstream scoring/report.
+                                if not existing.get("description"):
+                                    desc = existing.get("descriptionRaw") or ""
+                                    extracted = existing.get("extracted")
+                                    if not desc and isinstance(extracted, dict):
+                                        desc = extracted.get("description") or extracted.get("descriptionRaw") or extracted.get("raw") or extracted.get("text") or ""
+                                    if desc and str(desc).strip():
+                                        try:
+                                            existing["description"] = normalize_jd_text(str(desc))
+                                        except Exception:
+                                            existing["description"] = str(desc)
+                                        if not (isinstance(existing.get("key_requirements"), list) and existing.get("key_requirements")):
+                                            existing["key_requirements"] = _extract_key_requirements(existing.get("description") or "")
+                                        artifacts["jd"] = existing
+                            elif str(row.jd_id).startswith("manual:"):
+                                manual_text = str(row.jd_id)[len("manual:"):]
                                 try:
-                                    desc = normalize_jd_text(desc)
+                                    desc = normalize_jd_text(manual_text)
                                 except Exception:
-                                    pass
+                                    desc = manual_text
                                 reqs = _extract_key_requirements(desc)
                                 matched, total, pct, details = _coverage(desc, reqs)
                                 artifacts["jd"] = {
-                                    "url": row.jd_id,
-                                    "title": extracted.get("title") or row.name,
-                                    "company": extracted.get("company") or row.company,
+                                    "url": "manual",
+                                    "title": row.name,
+                                    "company": row.company,
                                     "description": desc,
-                                    "extraction_metadata": extraction_result.get("extraction_metadata", {}),
-                                    "quality_score": extraction_result.get("quality_score", 0.0),
+                                    "extraction_metadata": {"method": "manual", "quality_score": 1.0, "timestamp": time.time()},
+                                    "quality_score": 1.0,
                                     "key_requirements": reqs,
                                     "coverage": {"matched": matched, "total": total, "percent": round(pct, 2)},
                                     "matches": details,
                                 }
-                                log.append(f"jd: extracted (quality={artifacts['jd']['quality_score']:.2f})")
+                                log.append("jd: manual")
+                            elif not re.match(r"^https?://", str(row.jd_id)):
+                                # Some clients store a non-URL JD identifier (e.g. mocked `jd_*`).
+                                # Try to materialize JD text from any previously imported artifacts.
+                                desc = ""
+                                try:
+                                    if isinstance(existing, dict):
+                                        desc = existing.get("description") or existing.get("descriptionRaw") or ""
+                                        if not desc and isinstance(existing.get("extracted"), dict):
+                                            extracted = existing.get("extracted") or {}
+                                            desc = extracted.get("description") or extracted.get("descriptionRaw") or extracted.get("raw") or extracted.get("text") or ""
+                                except Exception:
+                                    desc = ""
+
+                                if desc and desc.strip():
+                                    try:
+                                        desc = normalize_jd_text(desc)
+                                    except Exception:
+                                        pass
+                                    reqs = _extract_key_requirements(desc)
+                                    matched, total, pct, details = _coverage(desc, reqs)
+                                    artifacts["jd"] = {
+                                        "url": "imported",
+                                        "title": row.name,
+                                        "company": row.company,
+                                        "description": desc,
+                                        "extraction_metadata": {"method": "imported", "quality_score": 1.0, "timestamp": time.time()},
+                                        "quality_score": 1.0,
+                                        "key_requirements": reqs,
+                                        "coverage": {"matched": matched, "total": total, "percent": round(pct, 2)},
+                                        "matches": details,
+                                    }
+                                    log.append("jd: imported")
+                                else:
+                                    log.append("jd: skipped (unrecognized jdId)")
                             else:
-                                artifacts["jd"] = {"error": extraction_result.get("error")}
-                                log.append("jd: extraction_failed")
+                                extraction_result = await enhanced_extractor.extract_with_antibot(row.jd_id, pipeline_id=row.id)
+                                if extraction_result.get("success"):
+                                    extracted = extraction_result["data"]
+                                    desc = extracted.get("description", "")
+                                    try:
+                                        desc = normalize_jd_text(desc)
+                                    except Exception:
+                                        pass
+                                    reqs = _extract_key_requirements(desc)
+                                    matched, total, pct, details = _coverage(desc, reqs)
+                                    artifacts["jd"] = {
+                                        "url": row.jd_id,
+                                        "title": extracted.get("title") or row.name,
+                                        "company": extracted.get("company") or row.company,
+                                        "description": desc,
+                                        "extraction_metadata": extraction_result.get("extraction_metadata", {}),
+                                        "quality_score": extraction_result.get("quality_score", 0.0),
+                                        "key_requirements": reqs,
+                                        "coverage": {"matched": matched, "total": total, "percent": round(pct, 2)},
+                                        "matches": details,
+                                    }
+                                    log.append(f"jd: extracted (quality={artifacts['jd']['quality_score']:.2f})")
+                                else:
+                                    artifacts["jd"] = {"error": extraction_result.get("error")}
+                                    log.append("jd: extraction_failed")
 
                     elif step == "profile":
                         # obtain resume text (from resume_id or stored artifact)
                         resume_text = None
                         if row.resume_id:
                             try:
-                                resume_text = fetch_text(row.resume_id)
+                                if str(row.resume_id).startswith("manual:"):
+                                    resume_text = str(row.resume_id)[len("manual:"):]
+                                else:
+                                    resume_text = fetch_text(row.resume_id)
                             except Exception:
                                 resume_text = None
-                        if not resume_text and artifacts.get("resume"):
-                            resume_text = artifacts.get("resume", {}).get("text")
+                        if not resume_text and artifacts.get("resume") and isinstance(artifacts.get("resume"), dict):
+                            resume_text = (artifacts.get("resume") or {}).get("text")
                         if resume_text:
                             parsed = extract_profile_from_text(resume_text)
                             normalized = normalize_skills(parsed.get("skills", []) or [])
@@ -1000,8 +1265,25 @@ async def run_pipeline_v2(id: str) -> RunResultV2:
                     elif step == "ats":
                         # score profile against JD
                         parsed = (artifacts.get("profile") or {}).get("parsed") or {}
+                        normalized = (artifacts.get("profile") or {}).get("normalized_skills")
                         jd_desc = (artifacts.get("jd") or {}).get("description", "")
-                        score = score_profile(parsed, {"description": jd_desc, "top_keywords": []})
+                        reqs: List[str] = []
+                        try:
+                            jd_obj = artifacts.get("jd") if isinstance(artifacts, dict) else None
+                            if isinstance(jd_obj, dict) and isinstance(jd_obj.get("key_requirements"), list):
+                                reqs = [str(x) for x in (jd_obj.get("key_requirements") or []) if str(x).strip()]
+                        except Exception:
+                            reqs = []
+                        if not reqs:
+                            reqs = _extract_key_requirements(jd_desc)
+
+                        profile_for_score = dict(parsed) if isinstance(parsed, dict) else {"raw_text": str(parsed or "")}
+                        if normalized is not None:
+                            profile_for_score["normalized_skills"] = normalized
+
+                        score = score_profile(profile_for_score, {"text": jd_desc, "keywords": reqs})
+                        score["updatedAt"] = time.time()
+                        score["keywordsUsed"] = reqs[:50]
                         artifacts["ats"] = score
                         log.append(f"ats: scored (aggregate={score.get('aggregate')})")
 
@@ -1045,6 +1327,115 @@ async def run_pipeline_v2(id: str) -> RunResultV2:
 
     _CACHE_GET.pop(id, None); _CACHE_LIST.clear()
     return RunResultV2(pipeline=_to_pydantic(row), log=log)
+
+
+@router.post("/{id}/ats/recompute", response_model=PipelineV2)
+async def recompute_ats_v2(id: str) -> PipelineV2:
+    """Compute ATS score and persist it into artifacts without running the full pipeline.
+
+    This is intentionally lightweight so the ATS page can show the latest score
+    without triggering every pipeline step.
+    """
+    with SessionLocal() as db:
+        row = db.get(PipelineV2Record, id)
+        if not row:
+            row = _migrate_legacy_if_needed(db, id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Pipeline not found")
+
+        data = json.loads(row.statuses_json or "{}") or {"statuses": {}, "artifacts": {}}
+        statuses: Dict[str, str] = data.get("statuses", {}) or {}
+        artifacts: Dict[str, object] = data.get("artifacts", {}) or {}
+
+        # JD text: prefer materialized artifacts, never do remote extraction here.
+        jd_desc = ""
+        jd_obj = artifacts.get("jd") if isinstance(artifacts, dict) else None
+        if isinstance(jd_obj, dict):
+            jd_desc = jd_obj.get("description") or jd_obj.get("descriptionRaw") or ""
+            extracted = jd_obj.get("extracted")
+            if (not jd_desc) and isinstance(extracted, dict):
+                jd_desc = extracted.get("description") or extracted.get("descriptionRaw") or extracted.get("raw") or extracted.get("text") or ""
+
+        if (not jd_desc) and row.jd_id and str(row.jd_id).startswith("manual:"):
+            jd_desc = str(row.jd_id)[len("manual:"):]
+
+        jd_desc = str(jd_desc or "")
+        if jd_desc.strip():
+            try:
+                jd_desc = normalize_jd_text(jd_desc)
+            except Exception:
+                pass
+        else:
+            raise HTTPException(status_code=400, detail="JD text is missing; attach/analyze a JD first")
+
+        # Resume/profile: use existing parsed profile if available; otherwise parse from resume text.
+        parsed = None
+        normalized = None
+        profile_obj = artifacts.get("profile") if isinstance(artifacts, dict) else None
+        if isinstance(profile_obj, dict):
+            parsed = profile_obj.get("parsed")
+            normalized = profile_obj.get("normalized_skills")
+
+        resume_text = None
+        if parsed is None:
+            if row.resume_id:
+                try:
+                    if str(row.resume_id).startswith("manual:"):
+                        resume_text = str(row.resume_id)[len("manual:"):]
+                    else:
+                        resume_text = fetch_text(row.resume_id)
+                except Exception:
+                    resume_text = None
+            if not resume_text and isinstance(artifacts.get("resume"), dict):
+                resume_text = (artifacts.get("resume") or {}).get("text")
+            if resume_text:
+                parsed = extract_profile_from_text(str(resume_text))
+                normalized = normalize_skills((parsed or {}).get("skills", []) or [])
+                if normalized is None:
+                    normalized = {}
+                elif isinstance(normalized, list):
+                    normalized = {"skills": normalized}
+                artifacts["profile"] = {"parsed": parsed, "normalized_skills": normalized}
+
+        if not isinstance(parsed, dict) or not parsed:
+            raise HTTPException(status_code=400, detail="Resume/profile is missing; attach a resume first")
+
+        # Requirements list
+        reqs: List[str] = []
+        if isinstance(jd_obj, dict) and isinstance(jd_obj.get("key_requirements"), list):
+            reqs = [str(x) for x in (jd_obj.get("key_requirements") or []) if str(x).strip()]
+        if not reqs:
+            reqs = _extract_key_requirements(jd_desc)
+
+        profile_for_score = dict(parsed)
+        if normalized is not None:
+            profile_for_score["normalized_skills"] = normalized
+
+        score = score_profile(profile_for_score, {"text": jd_desc, "keywords": reqs})
+        score["updatedAt"] = time.time()
+        score["keywordsUsed"] = reqs[:50]
+        artifacts["ats"] = score
+
+        # Persist. Only mark the relevant steps as complete; avoid reshaping other statuses.
+        for k in V2_ORDER:
+            statuses.setdefault(k, "pending")
+        statuses["profile"] = "complete"
+        statuses["ats"] = "complete"
+
+        # Keep canonical JD description slot filled if possible.
+        if isinstance(jd_obj, dict):
+            if not jd_obj.get("description") and jd_desc.strip():
+                jd_obj["description"] = jd_desc
+            if not (isinstance(jd_obj.get("key_requirements"), list) and jd_obj.get("key_requirements")):
+                jd_obj["key_requirements"] = reqs
+            artifacts["jd"] = jd_obj
+
+        row.statuses_json = json.dumps({"statuses": statuses, "artifacts": artifacts})
+        db.add(row)
+        db.commit(); db.refresh(row)
+
+    _CACHE_GET.pop(id, None); _CACHE_LIST.clear()
+    return _to_pydantic(row)
 
 
 @router.post("/{id}/upload")
@@ -1212,18 +1603,131 @@ def _extract_key_requirements(desc: str) -> List[str]:
     - Prefer bullet-like lines
     - Fallback to sentences mentioning years/skills/tools
     """
-    text = desc or ""
-    lines = [l.strip() for l in text.splitlines()]
-    bullets = []
-    for l in lines:
-        if re.match(r"^[-*•\u2022\u25CF]\s+", l) or re.match(r"^\d+\.", l):
-            bullets.append(re.sub(r"^([-*•\u2022\u25CF]|\d+\.)\s+", "", l).strip())
-    reqs = [b for b in bullets if len(b) > 0]
-    if len(reqs) >= 3:
-        return reqs[:25]
+    text = (desc or "").strip()
+    if not text:
+        return []
+
+    ignore_phrases = [
+        "ai overview",
+        "equal opportunity",
+        "eoe",
+        "privacy policy",
+        "terms and conditions",
+        "apply now",
+        "about us",
+        "benefits",
+        "compensation",
+        "salary",
+        "location",
+        "hybrid",
+        "remote",
+        "on-site",
+        "onsite",
+    ]
+
+    req_section_starts = [
+        "requirements",
+        "qualifications",
+        "preferred qualifications",
+        "what you'll do",
+        "what you will do",
+        "responsibilities",
+        "role responsibilities",
+        "key responsibilities",
+        "you will",
+        "we are looking for",
+    ]
+    non_req_section_starts = [
+        "about",
+        "company",
+        "who we are",
+        "perks",
+        "benefits",
+        "legal",
+        "privacy",
+    ]
+
+    def _looks_like_heading(line: str) -> bool:
+        if not line:
+            return False
+        low = line.lower().strip().strip(":")
+        return any(low == h or low.startswith(h + ":") for h in (req_section_starts + non_req_section_starts))
+
+    def _is_noise(line: str) -> bool:
+        low = line.lower()
+        if any(p in low for p in ignore_phrases):
+            return True
+        # Very title/location-like lines (often comma-separated place strings)
+        if re.search(r"\b(india|usa|united states|uk|canada|australia)\b", low) and low.count(",") >= 1:
+            return True
+        if re.match(r"^(job\s+title|location|company)\s*:\s*", low):
+            return True
+        return False
+
+    def _split_into_phrases(s: str) -> List[str]:
+        s = re.sub(r"\s+", " ", (s or "").strip())
+        if not s:
+            return []
+        parts = re.split(r"[;•\u2022]|\s+\u2013\s+|\s+\u2014\s+|\s+-\s+", s)
+        out: List[str] = []
+        for p in parts:
+            p = p.strip(" \t-•\u2022")
+            # Further split on commas for long clauses.
+            if len(p) > 140 and "," in p:
+                out.extend([x.strip() for x in p.split(",")])
+            else:
+                out.append(p)
+        cleaned: List[str] = []
+        for p in out:
+            p = p.strip(" \t-•\u2022,.")
+            if not p or _is_noise(p):
+                continue
+            # Keep reasonably-sized requirement phrases.
+            if not (12 <= len(p) <= 160):
+                continue
+            tokens = re.findall(r"[a-z0-9+#.]+", p.lower())
+            if len(tokens) < 2:
+                continue
+            cleaned.append(p)
+        return cleaned
+
+    # 1) Prefer requirement/responsibility sections and bullet lines.
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    in_req_section = False
+    candidates: List[str] = []
+    for line in lines:
+        low = line.lower().strip()
+        if _looks_like_heading(line):
+            heading = low.strip().strip(":")
+            if any(heading == h or heading.startswith(h) for h in req_section_starts):
+                in_req_section = True
+            elif any(heading == h or heading.startswith(h) for h in non_req_section_starts):
+                in_req_section = False
+            continue
+
+        if _is_noise(line):
+            continue
+
+        is_bullet = bool(re.match(r"^[-*•\u2022\u25CF]\s+", line) or re.match(r"^\d+\.", line))
+        if is_bullet:
+            payload = re.sub(r"^([-*•\u2022\u25CF]|\d+\.)\s+", "", line).strip()
+            candidates.extend(_split_into_phrases(payload))
+        elif in_req_section:
+            candidates.extend(_split_into_phrases(line))
+
+    if len(candidates) >= 3:
+        seen = set()
+        uniq: List[str] = []
+        for r in candidates:
+            key = r.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            uniq.append(r)
+        return uniq[:25]
     # Fallback: pick sentences with strong signals
     sentences = re.split(r"(?<=[.!?])\s+", text)
-    strong = []
+    strong: List[str] = []
     patterns = [
         r"\b\d+\+?\s+(years|yrs)\b",
         r"\b(experience|proficien\w*|expert\w*|knowledge)\b",
@@ -1233,12 +1737,51 @@ def _extract_key_requirements(desc: str) -> List[str]:
     ]
     for s in sentences:
         low = s.lower()
+        if _is_noise(low):
+            continue
         if any(re.search(p, low) for p in patterns):
-            strong.append(s.strip())
+            strong.extend(_split_into_phrases(s.strip()))
     if strong:
-        return strong[:20]
+        # Deduplicate while preserving order
+        seen = set()
+        uniq = []
+        for r in strong:
+            key = r.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            uniq.append(r)
+        return uniq[:20]
     # Last resort: top non-empty lines
-    return [l for l in lines if l][:10]
+    out: List[str] = []
+    for l in [l for l in lines if l and not _is_noise(l)]:
+        out.extend(_split_into_phrases(l))
+    if not out:
+        return []
+    # Prefer phrases that look like actionable requirements.
+    def _score_phrase(p: str) -> int:
+        low = p.lower()
+        score = 0
+        if re.search(r"\b(must|should|required|preferred)\b", low):
+            score += 2
+        if re.search(r"\b(experience|skills?|ability|knowledge|proficien\w*|expert\w*)\b", low):
+            score += 2
+        if re.search(r"\b(lead|manage|drive|build|develop|design|implement|analy\w*|communicat\w*|collaborat\w*)\b", low):
+            score += 1
+        if re.search(r"\b\d+\+?\s*(years|yrs)\b", low):
+            score += 2
+        return score
+
+    out_sorted = sorted(out, key=_score_phrase, reverse=True)
+    seen = set()
+    uniq = []
+    for r in out_sorted:
+        key = r.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(r)
+    return uniq[:15]
 
 
 def _coverage(desc: str, reqs: List[str]) -> Tuple[int, int, float, List[Dict[str, object]]]:
@@ -1355,10 +1898,14 @@ async def get_extraction_stats() -> Dict[str, Any]:
         # Get extraction stats from enhanced extractor
         extraction_stats = enhanced_extractor.get_extraction_stats()
         
-        # Get IP rotation manager stats
-        ip_stats = enhanced_extractor.ip_manager.get_rotation_stats()
+        # Get IP rotation manager stats (guarded in case the manager doesn't expose the method)
+        try:
+            ip_stats = enhanced_extractor.ip_manager.get_rotation_stats()
+        except Exception as e:
+            logger.warning(f"IP rotation stats unavailable: {e}")
+            ip_stats = {}
         
-        # Get recent pipeline success rates from database
+        # Get recent pipeline success rates + outcomes from database
         with SessionLocal() as db:
             # Get last 100 pipelines with JD analysis
             recent_pipelines = db.execute(
@@ -1377,15 +1924,51 @@ async def get_extraction_stats() -> Dict[str, Any]:
                 "extraction_methods": {}
             }
             
+            ats_scores: List[float] = []  # store ATS score as 0..100
+            report_scores: List[float] = []  # store report score as 0..100
+            top_candidates: List[Dict[str, Any]] = []
+
             for pipeline in recent_pipelines:
                 try:
                     data = json.loads(pipeline.statuses_json or "{}")
                     artifacts = data.get("artifacts", {})
                     jd_data = artifacts.get("jd", {})
+                    statuses = data.get("statuses", {}) or {}
+
+                    # ATS outcome (aggregate 0..1 preferred; fall back to other legacy keys)
+                    ats_pct: Optional[float] = None
+                    ats_art = artifacts.get("ats")
+                    if isinstance(ats_art, dict):
+                        agg = ats_art.get("aggregate")
+                        cov = ats_art.get("coverage")
+                        score = ats_art.get("score")
+                        if isinstance(agg, (int, float)):
+                            ats_pct = float(agg) * 100.0
+                        elif isinstance(cov, (int, float)):
+                            # legacy: already percent
+                            ats_pct = float(cov)
+                        elif isinstance(score, (int, float)):
+                            # legacy: could be 0..1 or 0..100
+                            v = float(score)
+                            ats_pct = v * 100.0 if v <= 1.0 else v
+                    if ats_pct is not None:
+                        ats_pct = max(0.0, min(100.0, ats_pct))
+                        ats_scores.append(ats_pct)
+
+                    # Report outcome (only if previously persisted to artifacts)
+                    rep_art = artifacts.get("report")
+                    rep_score: Optional[float] = None
+                    if isinstance(rep_art, dict):
+                        rep_data = rep_art.get("data")
+                        if isinstance(rep_data, dict) and isinstance(rep_data.get("score"), (int, float)):
+                            rep_score = float(rep_data.get("score"))
+                    if rep_score is not None:
+                        rep_score = max(0.0, min(100.0, rep_score))
+                        report_scores.append(rep_score)
                     
                     if jd_data:
                         # Count by status
-                        jd_status = data.get("statuses", {}).get("jd", "unknown")
+                        jd_status = statuses.get("jd", "unknown")
                         
                         if jd_status == "complete":
                             # Extract method and quality information
@@ -1404,6 +1987,17 @@ async def get_extraction_stats() -> Dict[str, Any]:
                             pipeline_stats["blocked_pipelines"] += 1
                         elif jd_status == "failed":
                             pipeline_stats["failed_pipelines"] += 1
+
+                    # Candidate for dashboard lists
+                    top_candidates.append({
+                        "id": pipeline.id,
+                        "name": pipeline.name,
+                        "company": pipeline.company,
+                        "createdAt": pipeline.created_at_ms,
+                        "jd_status": statuses.get("jd", "pending"),
+                        "ats_percent": ats_pct,
+                        "report_score": rep_score,
+                    })
                             
                 except Exception as e:
                     logger.warning(f"Failed to parse pipeline stats for {pipeline.id}: {e}")
@@ -1423,6 +2017,30 @@ async def get_extraction_stats() -> Dict[str, Any]:
             successful = len(pipeline_stats["quality_scores"])
             total = pipeline_stats["total_pipelines_analyzed"]
             pipeline_stats["pipeline_success_rate"] = successful / total if total > 0 else 0.0
+
+            # ATS summary (intake→ATS outcome)
+            if ats_scores:
+                ats_summary = {
+                    "pipelines_scored": len(ats_scores),
+                    "avg": sum(ats_scores) / len(ats_scores),
+                    "min": min(ats_scores),
+                    "max": max(ats_scores),
+                }
+            else:
+                ats_summary = {"pipelines_scored": 0, "avg": 0.0, "min": 0.0, "max": 0.0}
+
+            if report_scores:
+                report_summary = {
+                    "reports_available": len(report_scores),
+                    "avg": sum(report_scores) / len(report_scores),
+                }
+            else:
+                report_summary = {"reports_available": 0, "avg": 0.0}
+
+            # Top pipelines by ATS score (dashboard)
+            top_pipelines = [c for c in top_candidates if isinstance(c.get("ats_percent"), (int, float))]
+            top_pipelines.sort(key=lambda x: float(x.get("ats_percent") or 0.0), reverse=True)
+            top_pipelines = top_pipelines[:10]
         
         # Combine all stats
         comprehensive_stats = {
@@ -1430,6 +2048,9 @@ async def get_extraction_stats() -> Dict[str, Any]:
             "extraction_engine": extraction_stats,
             "ip_rotation": ip_stats,
             "pipeline_performance": pipeline_stats,
+            "ats_summary": ats_summary,
+            "report_summary": report_summary,
+            "top_pipelines": top_pipelines,
             "anti_bot_summary": {
                 "total_attempts": extraction_stats.get("total_attempts", 0),
                 "success_rate": extraction_stats.get("success_rate", 0.0),
@@ -1459,12 +2080,16 @@ async def debug_test_extraction(url: str) -> Dict[str, Any]:
         extraction_result = await enhanced_extractor.extract_with_antibot(url, pipeline_id="debug")
         
         # Get additional debug info
+        try:
+            ip_rotation_stats = enhanced_extractor.ip_manager.get_rotation_stats()
+        except Exception:
+            ip_rotation_stats = {}
         debug_info = {
             "url": url,
             "timestamp": time.time(),
             "extraction_result": extraction_result,
             "extractor_stats": enhanced_extractor.get_extraction_stats(),
-            "ip_rotation_stats": enhanced_extractor.ip_manager.get_rotation_stats()
+            "ip_rotation_stats": ip_rotation_stats
         }
         
         # Try to detect blocking

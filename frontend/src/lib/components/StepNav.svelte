@@ -28,7 +28,7 @@
                'border-slate-200 bg-white text-gray-700 dark:bg-slate-800 dark:text-gray-200'}`}
            title={`Go to ${key}`}>
           {#if key === 'extract'}<Icon name="tag" size={14} />{/if}
-          {#if key === 'profile'}<Icon name="user" size={14} />{/if}
+          {#if key === 'profile'}<Icon name="file-text" size={14} />{/if}
           {#if key === 'generate'}<Icon name="sparkles" size={14} />{/if}
           {#if key === 'keywords'}<Icon name="tag" size={14} />{/if}
           {#if key === 'ats'}<Icon name="shield-check" size={14} />{/if}

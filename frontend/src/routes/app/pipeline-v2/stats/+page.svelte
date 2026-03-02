@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getExtractionStats, debugTestExtraction } from '$lib/pipelinesV2';
+  import { getExtractionStats, getPipelineReport } from '$lib/pipelinesV2';
   import Icon from '$lib/Icon.svelte';
 
   let stats: any = null;
@@ -9,10 +9,22 @@
   let fromDate: string | null = null;
   let toDate: string | null = null;
 
-  // Debug test vars
-  let testUrl = '';
-  let debugResult: any = null;
-  let debugLoading = false;
+  let reportById: Record<string, any> = {};
+  let reportBusyById: Record<string, boolean> = {};
+
+  async function generateReport(pipelineId: string) {
+    if (!pipelineId || reportBusyById[pipelineId]) return;
+    reportBusyById = { ...reportBusyById, [pipelineId]: true };
+    try {
+      const rep = await getPipelineReport(pipelineId);
+      reportById = { ...reportById, [pipelineId]: rep };
+    } catch (e: any) {
+      reportById = { ...reportById, [pipelineId]: { error: e?.message || 'Failed to generate report' } };
+    } finally {
+      reportBusyById = { ...reportBusyById, [pipelineId]: false };
+    }
+  }
+
 
   async function loadStats() {
     try {
@@ -28,31 +40,8 @@
 
   onMount(loadStats);
 
-  function exportCsv() {
-    // Basic CSV export of top_pipelines if present
-    const rows: string[] = [];
-    rows.push(['id','name','company','quality_score','runs'].join(','));
-    const list = stats?.top_pipelines || [];
-    for (const p of list) {
-      rows.push([p.id, `"${(p.name||'').replace(/\"/g,'\"')}"`, `"${(p.company||'').replace(/\"/g,'\"')}"`, p.quality_score, p.runs].join(','));
-    }
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `pipeline_v2_stats_${Date.now()}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  }
 
-  async function runDebugTest() {
-    if (!testUrl?.trim()) return;
-
-    try {
-      debugLoading = true;
-      debugResult = await debugTestExtraction(testUrl);
-    } catch (e: any) {
-      debugResult = { error: e.message || 'Test failed' };
-    } finally {
-      debugLoading = false;
-    }
-  }
+  
 
 </script>
 
@@ -66,7 +55,6 @@
       <input type="date" bind:value={fromDate} class="px-3 py-1 border rounded bg-white dark:bg-slate-800 text-sm" />
       <input type="date" bind:value={toDate} class="px-3 py-1 border rounded bg-white dark:bg-slate-800 text-sm" />
       <button class="px-3 py-1 border rounded text-sm" on:click={loadStats} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
-      <button class="px-3 py-1 bg-slate-50 dark:bg-slate-700 border rounded text-sm" on:click={exportCsv}>Export CSV</button>
     </div>
   </div>
 
@@ -91,7 +79,7 @@
       <!-- Anti-Bot Summary -->
       <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-          <Icon name="shield" size={20} />
+          <Icon name="shield-check" size={20} />
           Anti-Bot Performance
         </h2>
         <div class="space-y-3">
@@ -121,7 +109,7 @@
       <!-- Pipeline Performance -->
       <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-          <Icon name="bar-chart" size={20} />
+          <Icon name="layers" size={20} />
           Pipeline Performance
         </h2>
         <div class="space-y-3">
@@ -148,6 +136,31 @@
         </div>
       </div>
 
+      <!-- ATS Outcomes -->
+      <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm">
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+          <Icon name="check" size={20} />
+          ATS Outcomes
+        </h2>
+        <div class="space-y-3">
+          <div class="flex justify-between">
+            <span class="text-sm text-slate-600 dark:text-slate-400">Pipelines Scored</span>
+            <span class="font-medium">{stats.ats_summary?.pipelines_scored || 0}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-sm text-slate-600 dark:text-slate-400">Avg ATS</span>
+            <span class="font-medium">{(stats.ats_summary?.avg || 0).toFixed(1)}%</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-sm text-slate-600 dark:text-slate-400">Min / Max</span>
+            <span class="font-medium">{(stats.ats_summary?.min || 0).toFixed(0)}% / {(stats.ats_summary?.max || 0).toFixed(0)}%</span>
+          </div>
+          <div class="pt-2">
+            <div class="text-xs text-slate-500 mt-1">Average ATS score across recent pipelines</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Extraction Methods -->
       <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
@@ -170,7 +183,7 @@
       <!-- IP Rotation Stats -->
       <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-          <Icon name="globe" size={20} />
+          <Icon name="map" size={20} />
           IP Rotation Performance
         </h2>
         <div class="space-y-3">
@@ -187,61 +200,52 @@
       <!-- Top Pipelines -->
       <div class="border rounded-lg p-6 bg-white dark:bg-slate-800 shadow-sm lg:col-span-2">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-          <Icon name="star" size={20} />
+          <Icon name="sparkles" size={20} />
           Top Pipelines
         </h2>
-        <div class="space-y-2">
+        <div class="space-y-3">
           {#if stats.top_pipelines && stats.top_pipelines.length}
             {#each stats.top_pipelines as p}
-              <div class="flex items-center justify-between">
-                <div class="min-w-0">
-                  <div class="font-medium truncate">{p.name}</div>
-                  <div class="text-xs text-slate-500">{p.company} · {p.id}</div>
+              {@const pct = typeof p.ats_percent === 'number' ? Math.round(p.ats_percent) : null}
+              <div class="border border-slate-200 dark:border-slate-700 rounded-lg p-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="font-medium truncate">{p.name}</div>
+                    <div class="text-xs text-slate-500 truncate">{p.company || '—'} · {p.id}</div>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <a class="text-xs text-blue-600 hover:underline" href={`/app/pipeline-v2/${p.id}`}>Open</a>
+                    <button class="text-xs px-2 py-1 rounded border" on:click={() => generateReport(p.id)} disabled={reportBusyById[p.id]}>
+                      {reportBusyById[p.id] ? 'Generating…' : 'Generate report'}
+                    </button>
+                  </div>
                 </div>
-                <div class="text-right">
-                  <div class="font-medium">{(p.quality_score*100).toFixed(0)}%</div>
-                  <div class="text-xs text-slate-500">{p.runs} runs</div>
+
+                <div class="mt-2 flex items-center justify-between gap-3">
+                  <div class="text-xs text-slate-600 dark:text-slate-400">ATS</div>
+                  <div class="text-xs font-medium">{pct === null ? '—' : `${pct}%`}</div>
                 </div>
+
+                {#if reportById[p.id]}
+                  {#if reportById[p.id].error}
+                    <div class="mt-2 text-xs text-rose-600">{reportById[p.id].error}</div>
+                  {:else}
+                    <div class="mt-2 text-xs text-slate-700 dark:text-slate-300">Report score: {reportById[p.id].score ?? '—'}%</div>
+                    {#if (reportById[p.id].reasons || []).length}
+                      <div class="text-[12px] text-slate-500">{(reportById[p.id].reasons || []).slice(0,2).join('; ')}</div>
+                    {/if}
+                  {/if}
+                {:else if typeof p.report_score === 'number'}
+                  <div class="mt-2 text-xs text-slate-700 dark:text-slate-300">Report score: {Math.round(p.report_score)}%</div>
+                {/if}
               </div>
             {/each}
           {:else}
-            <div class="text-sm text-slate-500">No pipeline rankings available yet</div>
+            <div class="text-sm text-slate-500">No pipelines with ATS scores yet</div>
           {/if}
         </div>
       </div>
     </div>
 
-    <!-- Debug Section -->
-    <div class="mt-8 border rounded-lg p-6 bg-white dark:bg-slate-800">
-      <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-        <Icon name="bug" size={20} />
-        Debug Extraction Test
-      </h2>
-      <div class="space-y-4">
-        <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Test URL</label>
-          <input
-            type="url"
-            placeholder="https://example.com/job/123"
-            class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
-            bind:value={testUrl}
-          />
-        </div>
-        <button
-          class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-          on:click={runDebugTest}
-          disabled={debugLoading || !testUrl?.trim()}
-        >
-          {debugLoading ? 'Testing...' : 'Test Extraction'}
-        </button>
-
-        {#if debugResult}
-          <div class="border rounded p-4 bg-slate-50 dark:bg-slate-700">
-            <h3 class="font-medium mb-2">Test Results</h3>
-            <pre class="text-xs overflow-x-auto">{JSON.stringify(debugResult, null, 2)}</pre>
-          </div>
-        {/if}
-      </div>
-    </div>
   {/if}
 </div>

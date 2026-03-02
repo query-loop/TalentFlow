@@ -1,7 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
   import { onMount } from 'svelte';
-  import { listPipelines, type Pipeline } from '$lib/pipelines';
   import { listPipelinesV2, type PipelineV2 } from '$lib/pipelinesV2';
   let backendOk = false;
   let endpoints: Array<{ method: string; path: string; description: string }>= [];
@@ -25,11 +24,8 @@
   // Quick tasks config and drag-sort state
   type QuickTask = { id: string; label: string; href: string; icon: any };
   let quickTasks: QuickTask[] = [
-  { id: 'extract',  label: 'Extract a JD',     href: '/app/extract',  icon: 'tag' },
-    { id: 'generate', label: 'Generate a resume', href: '/app/generate', icon: 'sparkles' },
-    { id: 'ats',      label: 'ATS score',   href: '/app/ats',      icon: 'shield-check' },
-    { id: 'keywords', label: 'Run keyword analysis', href: '/app/keywords', icon: 'tag' },
-    { id: 'themes',   label: 'Choose a theme',    href: '/app/themes',   icon: 'palette' }
+    { id: 'pipelines_v2', label: 'Pipelines v2', href: '/app/pipelines-v2', icon: 'layers' },
+    { id: 'stats', label: 'ATS dashboard', href: '/app/pipeline-v2/stats', icon: 'shield-check' }
   ];
   let draggingTaskId: string | null = null;
   function saveQuickTasksOrder() {
@@ -98,23 +94,9 @@
     return out;
   }
 
-  // Pipeline state - using API types
-  type StepKey = 'extract' | 'profile' | 'generate' | 'keywords' | 'ats' | 'export' | 'save';
-  type StepStatus = 'pending' | 'active' | 'complete';
-  type PipelineStep = { key: StepKey; label: string; icon: any; link: string; desc: string };
-  const pipelineSteps: PipelineStep[] = [
-    { key: 'extract',  label: 'Extract JD', icon: 'tag',          link: '/app/extract',   desc: 'Paste or upload job description' },
-    { key: 'profile',  label: 'Profile',    icon: 'user',         link: '/app/generate',  desc: 'Build candidate profile' },
-    { key: 'generate', label: 'Generate',   icon: 'sparkles',     link: '/app/generate',  desc: 'Create a theme-aware draft' },
-    { key: 'keywords', label: 'Keywords',   icon: 'tag',          link: '/app/keywords',  desc: 'Analyze terms and gaps' },
-    { key: 'ats',      label: 'ATS',        icon: 'shield-check', link: '/app/ats',       desc: 'Score and get tips' },
-    { key: 'export',   label: 'Export',     icon: 'layers',       link: '/app/themes',    desc: 'Export to PDF/DOCX' },
-    { key: 'save',     label: 'Save',       icon: 'folder',       link: '/app/library',   desc: 'Store in your Library' }
-  ];
-  
-  // Use real API pipelines
-  let allPipelines: (Pipeline | PipelineV2)[] = [];
-  let recentPipelines: (Pipeline | PipelineV2)[] = [];
+  // Use real API pipelines (v2 only)
+  let allPipelines: PipelineV2[] = [];
+  let recentPipelines: PipelineV2[] = [];
   let pipelinesError: string | null = null;
   // UI state for expand/collapse of the recent pipelines section
   let pipelinesExpanded = true;
@@ -126,22 +108,21 @@
   async function loadPipelines() {
     try {
       pipelinesError = null;
-      const [v1Pipelines, v2Pipelines] = await Promise.allSettled([
-        listPipelines(),
-        listPipelinesV2()
-      ]);
-      
-      const combined: (Pipeline | PipelineV2)[] = [];
-      if (v1Pipelines.status === 'fulfilled') {
-        combined.push(...v1Pipelines.value);
-      }
-      if (v2Pipelines.status === 'fulfilled') {
-        combined.push(...v2Pipelines.value);
-      }
-      
+      const v2 = await listPipelinesV2();
       // Sort by creation time, most recent first
-      allPipelines = combined.sort((a, b) => b.createdAt - a.createdAt);
+      allPipelines = (v2 || []).sort((a, b) => b.createdAt - a.createdAt);
       recentPipelines = allPipelines.slice(0, 3);
+
+      // Keep ATS metric in sync with v2 artifacts when available
+      const latestWithAts = allPipelines.find(p => (p as any)?.artifacts?.ats);
+      if (latestWithAts) {
+        const a = (latestWithAts as any).artifacts.ats;
+        const pct = typeof a.aggregate === 'number' ? Math.round(a.aggregate * 100)
+                  : (typeof a.coverage === 'number' ? Math.round(a.coverage)
+                  : (typeof a.score === 'number' ? Math.round(a.score <= 1 ? a.score * 100 : a.score)
+                  : null));
+        if (typeof pct === 'number' && Number.isFinite(pct)) lastAtsScore = Math.max(0, Math.min(100, pct));
+      }
     } catch (e: any) {
       pipelinesError = e?.message || 'Failed to load pipelines';
       allPipelines = [];
@@ -149,55 +130,11 @@
     }
   }
 
-  // Helper function to get status for a pipeline step
-  function getStepStatus(pipeline: Pipeline | PipelineV2, stepKey: StepKey): StepStatus {
-    if ('statuses' in pipeline && pipeline.statuses && typeof pipeline.statuses === 'object') {
-      const statuses = pipeline.statuses as any;
-      
-      // For V1 pipelines, check the exact key
-      if (statuses[stepKey]) {
-        const status = statuses[stepKey];
-        if (status === 'complete' || status === 'active' || status === 'pending') {
-          return status;
-        }
-      }
-      
-      // For V2 pipelines, map V1 steps to V2 steps
-      const v2Mapping: Record<StepKey, string[]> = {
-        'extract': ['intake', 'jd'],
-        'profile': ['profile'],
-        'generate': ['gaps', 'differentiators', 'draft'],
-        'keywords': ['gaps'],
-        'ats': ['compliance', 'ats'],
-        'export': ['export'],
-        'save': ['actions']
-      };
-      
-      const v2Keys = v2Mapping[stepKey] || [];
-      for (const v2Key of v2Keys) {
-        if (statuses[v2Key]) {
-          const status = statuses[v2Key];
-          if (status === 'complete') return 'complete';
-          if (status === 'active') return 'active';
-        }
-      }
-    }
-    return 'pending';
-  }
-
-  // Helper function to determine if this is a V2 pipeline
-  function isV2Pipeline(pipeline: Pipeline | PipelineV2): boolean {
-    if ('statuses' in pipeline && pipeline.statuses) {
-      const statuses = pipeline.statuses as any;
-      // Check if it has V2-specific status keys
-      return !!(statuses.intake || statuses.jd || statuses.profile || statuses.gaps);
-    }
-    return false;
-  }
-
-  function progressOf(pipeline: Pipeline | PipelineV2) {
-    const completed = pipelineSteps.filter(s => getStepStatus(pipeline, s.key) === 'complete').length;
-    const total = pipelineSteps.length;
+  function progressOf(pipeline: PipelineV2) {
+    const statuses = (pipeline?.statuses || {}) as any;
+    const done = (k: string) => statuses[k] === 'complete' || ((pipeline as any)?.artifacts && (pipeline as any).artifacts[k]);
+    const total = 2;
+    const completed = (done('intake') ? 1 : 0) + (done('ats') ? 1 : 0);
     const percent = Math.round((completed / total) * 100);
     return { completed, total, percent };
   }
@@ -287,7 +224,7 @@
     <div class="flex items-center justify-between mb-2">
       <div class="text-sm text-gray-700 dark:text-gray-200">Recent curation pipelines</div>
       <div class="flex items-center gap-2">
-        <a href="https://orange-parakeet-wrv5wrwg59xhv9rp-5174.app.github.dev/app/pipelines-v2" class="inline-flex items-center text-xs px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition" target="_blank" rel="noopener noreferrer">Show all</a>
+        <a href="/app/pipelines-v2" class="inline-flex items-center text-xs px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition">Show all</a>
         <button class="inline-flex items-center justify-center w-7 h-7 border border-slate-200 dark:border-slate-700 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition"
                 aria-label="Toggle recent curation pipelines"
                 aria-expanded={pipelinesExpanded}
@@ -321,7 +258,7 @@
       {:else}
         <div class="text-sm text-gray-600 dark:text-gray-400">
           No pipelines yet. 
-          <a href="/app/pipelines" class="text-blue-600 hover:underline">Create your first pipeline</a>.
+          <a href="/app/pipelines-v2" class="text-blue-600 hover:underline">Create your first pipeline</a>.
         </div>
       {/if}
     {/if}

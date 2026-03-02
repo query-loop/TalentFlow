@@ -20,17 +20,15 @@
 
   // Primary entry points
   const workflows = [
-    { href: '/app/pipelines', label: 'Pipelines', desc: 'All curation pipelines', icon: 'layers' },
-    { href: '/app/library', label: 'Library', desc: 'Saved resumes & drafts', icon: 'folder' },
+    { href: '/app/pipelines-v2', label: 'Pipelines v2', desc: 'Intake → ATS scoring', icon: 'layers' },
+    { href: '/app/pipeline-v2/stats', label: 'ATS Dashboard', desc: 'ATS outcomes & reports', icon: 'shield-check' },
     { href: '/app/templates', label: 'Templates', desc: 'Reusable layouts', icon: 'layers' },
   ] as const;
 
   // Pipeline steps (removed Themes option per requested UI change)
   const pipeline = [
-    { href: '/app/extract', label: 'Extract', desc: 'Parse JDs per company/role', icon: 'tag' },
-    { href: '/app/generate', label: 'Generate', desc: 'Create tailored resumes per job', icon: 'sparkles' },
-    { href: '/app/keywords', label: 'Keywords', desc: 'Analyze JD and resume terms', icon: 'tag' },
-    { href: '/app/ats', label: 'ATS Score', desc: 'Scan and get improvement tips', icon: 'shield-check' }
+    { href: '/app/pipelines-v2', label: 'Pipelines v2', desc: 'Create + track pipelines', icon: 'layers' },
+    { href: '/app/pipeline-v2/stats', label: 'ATS Dashboard', desc: 'Score bars and reports', icon: 'shield-check' }
   ] as const;
 
   // Secondary resources

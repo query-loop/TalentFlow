@@ -143,6 +143,12 @@ async def process_jd_job(job: Dict[str, Any]) -> None:
             set_job_status(job_id, "running", data={"stage": "fetching", "progress": 5})
             html, status = await fetch_html(url, timeout=25.0, tries=3)
             logging.info(f"JD job {job_id}: fetched html (status={status}, bytes={len(html) if html else 0})")
+            # Publish a truncated html snippet to Redis job artifacts so SSE can show a live preview
+            try:
+                snippet = (html or "")[:2000]
+                set_job_status(job_id, "running", data={"stage": "fetching", "progress": 10}, artifacts={"html_snippet": snippet, "http_status": status})
+            except Exception:
+                pass
             # Original extraction logic for fallback
             if status >= 400:
                 err = f"http_{status}"
@@ -195,7 +201,7 @@ async def process_jd_job(job: Dict[str, Any]) -> None:
                     _persist_pipeline_jd_failure(pipeline_id, err, details)
                     logging.info(f"JD job {job_id}: free anti-bot exception -> {e}")
                     return
-            set_job_status(job_id, "running", data={"stage": "extracting", "progress": 25})
+                set_job_status(job_id, "running", data={"stage": "extracting", "progress": 25}, artifacts={"html_snippet": (html or "")[:2000]})
             simple = SimpleJobExtractor().extract(url, html)
             data = simple
             if not simple.get("description") or len(str(simple.get("description"))) < 120:
@@ -209,7 +215,7 @@ async def process_jd_job(job: Dict[str, Any]) -> None:
         soup = BeautifulSoup(html, 'html.parser')
         raw_text = soup.get_text('\n', strip=True)
         desc = data.get("description") or ""
-        set_job_status(job_id, "running", data={"stage": "normalizing", "progress": 70})
+        set_job_status(job_id, "running", data={"stage": "normalizing", "progress": 70}, artifacts={"html_snippet": (html or "")[:2000]})
         try:
             desc = normalize_jd_text(desc)
         except Exception:

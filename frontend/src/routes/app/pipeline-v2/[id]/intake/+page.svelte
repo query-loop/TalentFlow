@@ -11,7 +11,7 @@
   let jdUrl = '';
   let jdFile: File | null = null;
   let resumeFile: File | null = null;
-  // autoRun removed — pipeline run will be manual
+  // Pipeline run is manual from this page.
   let uploadBusy = false;
   let intakeInProgress = false;
   let intakeStatusMessage = '';
@@ -67,11 +67,7 @@
       // start monitoring status: JD SSE and polling upload-status
       subscribeJdSse();
       pollUploadStatus();
-      // Optionally run pipeline after upload
-      // Defer automatic run until intake completes. If autoRun is checked, we'll run after parse completes.
-      if (!autoRun) {
-        intakeStatusMessage = 'Upload complete. Waiting for parse to finish.';
-      }
+      intakeStatusMessage = 'Upload complete. Waiting for parse to finish.';
     } catch (e:any) {
       error = e?.message || String(e);
       intakeInProgress = false; showAttachModal = false;
@@ -140,10 +136,6 @@
       intakeInProgress = false;
       // close SSE
       if (jdSseEventSource) { jdSseEventSource.close(); jdSseEventSource = null; }
-      // run pipeline automatically if requested
-      if (autoRun && pipe) {
-        try { await fetch(`/api/pipelines-v2/${pipe.id}/run`, { method: 'POST' }); pipe = await getPipelineV2(pipe.id); } catch(e){ console.warn('auto run failed', e); }
-      }
     }
   }
 
@@ -154,7 +146,7 @@
     const j = pipe?.artifacts && (pipe.artifacts as any).jd;
     if (!j) return 'missing';
     const st = (j.parse_job_status || '').toUpperCase();
-    if (st === 'SUCCESS' || j.extracted === true) return 'success';
+    if (st === 'SUCCESS' || j.extracted) return 'success';
     if (['FAILURE', 'REVOKED', 'ERROR', 'FAIL'].includes(st)) return 'error';
     if (j.parse_job_id || intakeInProgress) return 'in-progress';
     return 'attached';

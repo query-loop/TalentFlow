@@ -8,5 +8,5 @@
   <div class="border rounded p-4">
     <div class="text-sm text-gray-700 dark:text-gray-300">Download or copy final artifacts (placeholder).</div>
   </div>
-  <StepFooterV2 current="export" pipelineId={id} />
+  <StepFooterV2 current="ats" pipelineId={id} />
 </div>

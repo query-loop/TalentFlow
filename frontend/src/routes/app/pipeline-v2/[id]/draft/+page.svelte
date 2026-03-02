@@ -124,5 +124,5 @@
     </div>
   </div>
 
-  <StepFooterV2 current="draft" pipelineId={id} />
+  <StepFooterV2 current="ats" pipelineId={id} />
 {/if}

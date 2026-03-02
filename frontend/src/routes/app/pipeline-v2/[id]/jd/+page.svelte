@@ -19,6 +19,25 @@
   let manualJD: string = '';
   let savingManual = false;
 
+  async function saveManualJD() {
+    if (!id || !manualJD.trim()) return;
+    savingManual = true; error = null;
+    try {
+      // Use the pipelines-v2 patch endpoint to set jdId to manual:... which backend treats as complete
+      await fetch(`/api/pipelines-v2/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jdId: 'manual:' + manualJD.trim() })
+      });
+      // reload pipeline to reflect changes
+      await loadPipeline();
+    } catch (e:any) {
+      error = e?.message || String(e);
+    } finally {
+      savingManual = false;
+    }
+  }
+
   let retrying = false;
   async function retryExtraction() {
     if (!pipe || !id || retrying) return;
@@ -185,7 +204,7 @@
             on:click={retryExtraction}
             disabled={retrying}
           >
-            <Icon name="refresh" size={12} />
+            <Icon name="spinner" size={12} />
             {retrying ? 'Retrying...' : 'Retry Extraction'}
           </button>
         </div>
@@ -203,23 +222,34 @@
         </div>
       {:else if timedOut}
         <div class="border border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-800 rounded p-3 text-sm text-yellow-800 dark:text-yellow-200">
-          <div class="font-medium mb-1">Taking longer than expected</div>
-          <div class="text-xs">You can stay on this page or come back later; we’ll load the extracted content as soon as it’s ready.</div>
+          <div class="font-medium mb-1">Processing is taking longer than expected</div>
+          <div class="text-xs mb-3">We're still working on extracting the job description — you can stay on this page or come back later and we'll load the content as soon as it's ready. To proceed immediately, paste the job description below and save it.</div>
+          <textarea class="w-full min-h-32 border rounded p-2 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100" bind:value={manualJD} placeholder="Paste job description text here..."></textarea>
+          <div class="mt-2 flex items-center gap-2">
+            <button class="px-3 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50" on:click={saveManualJD} disabled={savingManual || !manualJD.trim()}>{savingManual ? 'Saving…' : 'Save JD'}</button>
+          </div>
         </div>
       {:else}
         <div class="space-y-2">
           <div class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
             <svg class="animate-spin h-4 w-4 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
-            <span>{statusMessage || 'Processing job description…'}</span>
+            <span>{statusMessage || 'Extracting…'}</span>
           </div>
           {#if progress !== null}
             <div class="w-full bg-slate-100 dark:bg-slate-700 rounded h-2 overflow-hidden">
-              <div class="bg-slate-500 h-2" style={`width: ${Math.max(0, Math.min(100, progress))}%`}></div>
+              <div class="bg-blue-500 h-2 transition-all" style={`width: ${Math.max(0, Math.min(100, progress))}%`}></div>
             </div>
           {/if}
           {#if eta !== null}
-            <div class="text-xs text-slate-500 dark:text-slate-400">Estimated time remaining: ~{eta}s</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">~{eta}s remaining</div>
           {/if}
+          <details class="text-xs mt-1">
+            <summary class="cursor-pointer text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">Paste JD manually instead</summary>
+            <textarea class="mt-2 w-full min-h-28 border rounded p-2 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100" bind:value={manualJD} placeholder="Paste job description text here…"></textarea>
+            <div class="mt-2 flex items-center gap-2">
+              <button class="px-3 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50 text-xs" on:click={saveManualJD} disabled={savingManual || !manualJD.trim()}>{savingManual ? 'Saving…' : 'Save JD'}</button>
+            </div>
+          </details>
         </div>
       {/if}
     </div>

@@ -38,6 +38,10 @@
     }
     return html;
   }
+
+  function isHttpUrl(s: string | null | undefined): boolean {
+    return !!s && /^https?:\/\//.test(s);
+  }
 </script>
 
 {#if loading}
@@ -64,8 +68,10 @@
         <h1 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Profile</h1>
         <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">{pipe.name}{#if pipe.company} • {pipe.company}{/if}</div>
       </div>
-      <div class="text-xs px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-        <Icon name="id-card" size={12} class="mr-1 inline" /> Overview
+      <div class="flex items-center gap-2">
+        <div class="text-xs px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+          <Icon name="info" size={12} class="mr-1 inline" /> Overview
+        </div>
       </div>
     </div>
 
@@ -74,7 +80,7 @@
       <div class="border rounded-lg bg-white dark:bg-slate-800">
         <div class="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <Icon name="user" size={16} />
+            <Icon name="file-text" size={16} />
             <h2 class="text-sm font-semibold">Candidate Resume</h2>
           </div>
           {#if pipe.artifacts && (pipe.artifacts as any).resume?.filename}
@@ -96,10 +102,10 @@
       <div class="border rounded-lg bg-white dark:bg-slate-800">
         <div class="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <Icon name="briefcase" size={16} />
+            <Icon name="building" size={16} />
             <h2 class="text-sm font-semibold">Job Description (Highlights)</h2>
           </div>
-          {#if pipe.jdId}
+          {#if isHttpUrl(pipe.jdId)}
             <a href={pipe.jdId} target="_blank" rel="noopener" class="text-xs text-blue-600 hover:underline flex items-center gap-1">
               View Posting <Icon name="arrow-up-right" size={12} />
             </a>
@@ -138,5 +144,6 @@
     </div>
 
     <!-- Note: Analysis (gaps, differentiators, strengths) is intentionally not shown here. Use dedicated tabs. -->
+
   </div>
 {/if}

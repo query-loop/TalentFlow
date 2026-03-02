@@ -44,7 +44,7 @@
     <div class="flex items-center justify-between">
       <h1 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Gaps</h1>
       <div class="text-xs px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-        <Icon name="x-circle" size={12} class="inline mr-1" /> Areas to improve
+        <Icon name="alert-circle" size={12} class="inline mr-1" /> Areas to improve
       </div>
     </div>
 

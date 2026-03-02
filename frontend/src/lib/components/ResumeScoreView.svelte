@@ -62,7 +62,7 @@
               on:click={onReanalyze}
               class="text-xs px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition"
             >
-              <Icon name="refresh-cw" size={12} class="inline mr-1" />
+              <Icon name="spinner" size={12} class="inline mr-1" />
               Reanalyze
             </button>
           {/if}
@@ -95,7 +95,7 @@
         {#if score.matched_skills && score.matched_skills.length > 0}
           <div class="mb-3">
             <div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-              <Icon name="check-circle" size={14} class="text-green-600 dark:text-green-400" />
+              <Icon name="check" size={14} class="text-green-600 dark:text-green-400" />
               Matched Skills ({score.matched_skills.length})
             </div>
             <div class="flex flex-wrap gap-1.5">
@@ -129,7 +129,7 @@
         {#if score.strengths && score.strengths.length > 0}
           <div class="mb-3">
             <div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-              <Icon name="star" size={14} class="text-blue-600 dark:text-blue-400" />
+              <Icon name="sparkles" size={14} class="text-blue-600 dark:text-blue-400" />
               Strengths
             </div>
             <ul class="space-y-1">
@@ -147,7 +147,7 @@
         {#if score.gaps && score.gaps.length > 0}
           <div class="mb-3">
             <div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-              <Icon name="x-circle" size={14} class="text-red-600 dark:text-red-400" />
+              <Icon name="alert-circle" size={14} class="text-red-600 dark:text-red-400" />
               Gaps to Address
             </div>
             <ul class="space-y-1">
@@ -165,7 +165,7 @@
         {#if score.recommendations && score.recommendations.length > 0}
           <div>
             <div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-              <Icon name="lightbulb" size={14} class="text-purple-600 dark:text-purple-400" />
+              <Icon name="info" size={14} class="text-purple-600 dark:text-purple-400" />
               Recommendations
             </div>
             <ul class="space-y-1.5">

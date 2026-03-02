@@ -284,37 +284,10 @@ class JobSearchExamples {
   }
 }
 
-// React Hook example
-function useJobSearch() {
-  const [jobs, setJobs] = React.useState<StandardizedJob[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const client = React.useMemo(() => new RapidAPIJobClient(), []);
-
-  const searchJobs = React.useCallback(async (query: JobSearchQuery) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const results = await client.searchJobs(query);
-      setJobs(results.jobs);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      setJobs([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [client]);
-
-  return { jobs, loading, error, searchJobs };
-}
-
 // Export for use in applications
 export {
   RapidAPIJobClient,
   JobSearchExamples,
-  useJobSearch,
   type JobSearchQuery,
   type StandardizedJob,
   type JobSearchResponse,

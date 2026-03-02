@@ -5,9 +5,11 @@
     description?: string;
     url?: string;
     location?: string;
+    source?: string;
   } | null = null;
   
   export let compact = false;
+  export let showHeader = true;
   
   function formatJobDescription(text: string): string {
     if (!text) return '';
@@ -106,44 +108,46 @@
 
 {#if jdData}
   <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-    <!-- Header -->
-    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-      <div class="flex items-start justify-between">
-        <div class="flex-1">
-          <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-            {jdData.title || 'Job Posting'}
-          </h2>
-          <div class="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-            {#if jdData.company}
-              <div class="flex items-center gap-1">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm3 1h6v4H7V5zm6 6H7v2h6v-2z" clip-rule="evenodd"/>
-                </svg>
-                <span class="font-medium">{jdData.company}</span>
-              </div>
-            {/if}
-            {#if jdData.location}
-              <div class="flex items-center gap-1">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
-                </svg>
-                <span>{jdData.location}</span>
-              </div>
-            {/if}
-            {#if jdData.url}
-              <div class="flex items-center gap-1">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"/>
-                </svg>
-                <a href={jdData.url} target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 hover:underline">
-                  View Original
-                </a>
-              </div>
-            {/if}
+    {#if showHeader}
+      <!-- Header -->
+      <div class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+        <div class="flex items-start justify-between">
+          <div class="flex-1">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">
+              {jdData.title || 'Job Posting'}
+            </h2>
+            <div class="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+              {#if jdData.company}
+                <div class="flex items-center gap-1">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm3 1h6v4H7V5zm6 6H7v2h6v-2z" clip-rule="evenodd"/>
+                  </svg>
+                  <span class="font-medium">{jdData.company}</span>
+                </div>
+              {/if}
+              {#if jdData.location}
+                <div class="flex items-center gap-1">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
+                  </svg>
+                  <span>{jdData.location}</span>
+                </div>
+              {/if}
+              {#if jdData.url}
+                <div class="flex items-center gap-1">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"/>
+                  </svg>
+                  <a href={jdData.url} target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 hover:underline">
+                    View Original
+                  </a>
+                </div>
+              {/if}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    {/if}
     
     <!-- Content -->
     <div class="px-6 py-4">
