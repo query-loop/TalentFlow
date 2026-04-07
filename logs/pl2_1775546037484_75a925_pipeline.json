@@ -1,0 +1,86 @@
+{
+  "pipeline_id": "pl2_1775546037484_75a925",
+  "timestamp": 1775546058.2395504,
+  "total_duration_seconds": 0.03,
+  "steps_completed": 9,
+  "steps_failed": 0,
+  "step_metrics": {
+    "intake": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775546058.2177825,
+      "status": "success"
+    },
+    "jd": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775546058.2178936,
+      "status": "success"
+    },
+    "profile": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775546058.2179303,
+      "status": "success"
+    },
+    "gaps": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775546058.2179327,
+      "status": "success"
+    },
+    "differentiators": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775546058.217935,
+      "status": "success"
+    },
+    "draft": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775546058.2179372,
+      "status": "success"
+    },
+    "compliance": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775546058.2179394,
+      "status": "success"
+    },
+    "ats": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775546058.2182176,
+      "status": "success"
+    },
+    "actions": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775546058.2182934,
+      "status": "success"
+    }
+  },
+  "overall_metrics": {
+    "overall_score": 0.405,
+    "overall_score_100": 40.46,
+    "ats_score": 0.449,
+    "ats_score_100": 44.91,
+    "accuracy_metrics": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    "bias_score": 0.1,
+    "fairness_score": 0.9,
+    "keyword_coverage": 0.0,
+    "embedding_similarity": 0.749
+  },
+  "artifacts_summary": {
+    "has_jd": true,
+    "has_profile": true,
+    "has_ats": true,
+    "has_generated": true
+  },
+  "log_entries": [
+    "intake: recorded",
+    "jd: manual",
+    "profile: parsed and normalized",
+    "gaps: analyzed",
+    "differentiators: identified",
+    "draft: generated",
+    "compliance: checked",
+    "ats: scored (aggregate=0.449)",
+    "actions: generated and optimized"
+  ]
+}

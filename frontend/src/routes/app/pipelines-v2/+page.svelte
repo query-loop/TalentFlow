@@ -516,25 +516,36 @@
 
               <!-- Keywords & Coverage Metrics -->
               <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                {#if getKeywordsFoundCount(p) !== null}
-                  Keywords found: {getKeywordsFoundCount(p)}
-                {/if}
-                {#if getKeywordCoveragePercent(p) !== null}
-                  <span class="ml-2">• Coverage: {getKeywordCoveragePercent(p)}%</span>
-                {/if}
-                {#if getKeywordsMissingCount(p) !== null && getKeywordsFoundCount(p) === null}
-                  <span class="ml-2">• Missing: {getKeywordsMissingCount(p)}</span>
+                {#if getKeywordsFoundCount(p) !== null || getKeywordCoveragePercent(p) !== null || getKeywordsMissingCount(p) !== null}
+                  {#if getKeywordsFoundCount(p) !== null}
+                    Keywords found: {getKeywordsFoundCount(p)}
+                  {/if}
+                  {#if getKeywordCoveragePercent(p) !== null}
+                    <span class="ml-2">• Coverage: {getKeywordCoveragePercent(p)}%</span>
+                  {/if}
+                  {#if getKeywordsMissingCount(p) !== null}
+                    <span class="ml-2">• Missing: {getKeywordsMissingCount(p)}</span>
+                  {/if}
+                {:else}
+                  Keyword metrics: unavailable
                 {/if}
               </div>
 
               <!-- Accuracy Metrics (Precision, Recall, F1) -->
-              {#if getAccuracyMetrics(p)}
+              {@const accuracy = getAccuracyMetrics(p)}
+              {#if accuracy}
                 <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                  {#if getAccuracyMetrics(p)?.f1}
-                    F1-Score: {getAccuracyMetrics(p)?.f1}%
+                  {#if accuracy.f1 !== undefined}
+                    F1-Score: {accuracy.f1}%
+                  {:else if accuracy.precision !== undefined || accuracy.recall !== undefined}
+                    Accuracy: {accuracy.precision !== undefined ? `${accuracy.precision}%` : '—'} / {accuracy.recall !== undefined ? `${accuracy.recall}%` : '—'}
                   {:else}
-                    Accuracy: {getAccuracyMetrics(p)?.precision || getAccuracyMetrics(p)?.recall ? `${getAccuracyMetrics(p)?.precision || '—'}% / ${getAccuracyMetrics(p)?.recall || '—'}%` : '—'}
+                    Accuracy metrics: unavailable
                   {/if}
+                </div>
+              {:else}
+                <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                  Accuracy metrics: unavailable
                 </div>
               {/if}
 
@@ -543,10 +554,14 @@
                 <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
                   Fairness: {getFairnessScore(p)}%
                 </div>
+              {:else}
+                <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                  Fairness score: unavailable
+                </div>
               {/if}
 
               <!-- ATS Score (Secondary) -->
-              {#if getAtsPercent(p) !== null && getAtsPercent(p) !== getOverallScore(p)}
+              {#if getAtsPercent(p) !== null}
                 <div class="text-xs text-slate-500 dark:text-slate-500 mt-1">
                   ATS Component: {getAtsPercent(p)}%
                 </div>
