@@ -386,6 +386,43 @@
     return typeof ts === 'number' ? new Date(ts).toLocaleString() : null;
   }
 
+  function getOverallScore(p: PipelineV2): number | null {
+    const ats = p?.artifacts && (p.artifacts as any).ats;
+    if (!ats || typeof ats !== 'object') return null;
+    if (typeof ats.overall_score_100 === 'number') return Math.round(ats.overall_score_100);
+    if (typeof ats.overall_score === 'number') return Math.round(ats.overall_score * 100);
+    return null;
+  }
+
+  function getKeywordCoveragePercent(p: PipelineV2): number | null {
+    const ats = p?.artifacts && (p.artifacts as any).ats;
+    if (!ats || typeof ats !== 'object') return null;
+    if (typeof ats.keyword_coverage === 'number') return Math.min(100, Math.round(ats.keyword_coverage * 100));
+    if (typeof ats.keyword_percent === 'number') return Math.round(ats.keyword_percent);
+    return null;
+  }
+
+  function getAccuracyMetrics(p: PipelineV2): { precision?: number; recall?: number; f1?: number } | null {
+    const ats = p?.artifacts && (p.artifacts as any).ats;
+    if (!ats || typeof ats !== 'object') return null;
+    const accuracy = ats.accuracy_metrics || ats.accuracy;
+    if (accuracy && typeof accuracy === 'object') {
+      return {
+        precision: typeof accuracy.precision === 'number' ? Math.round(accuracy.precision * 100) : undefined,
+        recall: typeof accuracy.recall === 'number' ? Math.round(accuracy.recall * 100) : undefined,
+        f1: typeof accuracy.f1_score === 'number' ? Math.round(accuracy.f1_score * 100) : undefined,
+      };
+    }
+    return null;
+  }
+
+  function getFairnessScore(p: PipelineV2): number | null {
+    const ats = p?.artifacts && (p.artifacts as any).ats;
+    if (!ats || typeof ats !== 'object') return null;
+    if (typeof ats.fairness_score === 'number') return Math.min(100, Math.round(ats.fairness_score * 100));
+    return null;
+  }
+
   let reportBusyById: Record<string, boolean> = {};
   async function generateReportFor(p: PipelineV2) {
     if (!p?.id || reportBusyById[p.id]) return;
@@ -471,16 +508,51 @@
             <div class="min-w-0">
               <div class="font-medium truncate">{p.name}</div>
               <div class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap mt-0.5">{new Date(p.createdAt).toLocaleString()}</div>
+              
+              <!-- Overall Match Score (Primary Metric) -->
+              <div class="text-xs font-semibold text-slate-700 dark:text-slate-200 mt-2">
+                Overall Match: {getOverallScore(p) === null ? '—' : `${getOverallScore(p)}/100`}
+              </div>
+
+              <!-- Keywords & Coverage Metrics -->
               <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                ATS: {getAtsPercent(p) === null ? '—' : `${getAtsPercent(p)}%`}
                 {#if getKeywordsFoundCount(p) !== null}
-                  <span class="ml-2">• Keywords found: {getKeywordsFoundCount(p)}</span>
+                  Keywords found: {getKeywordsFoundCount(p)}
                 {/if}
-                {#if getKeywordsMissingCount(p) !== null}
+                {#if getKeywordCoveragePercent(p) !== null}
+                  <span class="ml-2">• Coverage: {getKeywordCoveragePercent(p)}%</span>
+                {/if}
+                {#if getKeywordsMissingCount(p) !== null && getKeywordsFoundCount(p) === null}
                   <span class="ml-2">• Missing: {getKeywordsMissingCount(p)}</span>
                 {/if}
               </div>
-              <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+
+              <!-- Accuracy Metrics (Precision, Recall, F1) -->
+              {#if getAccuracyMetrics(p)}
+                <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                  {#if getAccuracyMetrics(p)?.f1}
+                    F1-Score: {getAccuracyMetrics(p)?.f1}%
+                  {:else}
+                    Accuracy: {getAccuracyMetrics(p)?.precision || getAccuracyMetrics(p)?.recall ? `${getAccuracyMetrics(p)?.precision || '—'}% / ${getAccuracyMetrics(p)?.recall || '—'}%` : '—'}
+                  {/if}
+                </div>
+              {/if}
+
+              <!-- Fairness Score -->
+              {#if getFairnessScore(p) !== null}
+                <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                  Fairness: {getFairnessScore(p)}%
+                </div>
+              {/if}
+
+              <!-- ATS Score (Secondary) -->
+              {#if getAtsPercent(p) !== null && getAtsPercent(p) !== getOverallScore(p)}
+                <div class="text-xs text-slate-500 dark:text-slate-500 mt-1">
+                  ATS Component: {getAtsPercent(p)}%
+                </div>
+              {/if}
+
+              <div class="text-xs text-slate-500 dark:text-slate-400 mt-2">
                 Progress: {getSummary(p).pct}% • {getSummary(p).currentStep} • {getSummary(p).currentSmart.label}
               </div>
               <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">

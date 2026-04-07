@@ -15,6 +15,7 @@ services:
     working_dir: /app
     volumes:
       - ./server:/app
+      - ./logs:/workspaces/TalentFlow/logs
     environment:
       - REDIS_URL=redis://redis:6379/0
       # IP rotation configuration
@@ -48,6 +49,7 @@ services:
     working_dir: /app
     volumes:
       - ./server:/app
+      - ./logs:/workspaces/TalentFlow/logs
     environment:
       - REDIS_URL=redis://redis:6379/0
             # Same IP rotation config as server

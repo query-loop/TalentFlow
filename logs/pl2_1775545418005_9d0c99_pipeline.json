@@ -1,0 +1,86 @@
+{
+  "pipeline_id": "pl2_1775545418005_9d0c99",
+  "timestamp": 1775545418.0338116,
+  "total_duration_seconds": 0.02,
+  "steps_completed": 9,
+  "steps_failed": 0,
+  "step_metrics": {
+    "intake": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775545418.0249329,
+      "status": "success"
+    },
+    "jd": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775545418.0249412,
+      "status": "success"
+    },
+    "profile": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775545418.0249896,
+      "status": "success"
+    },
+    "gaps": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775545418.0249927,
+      "status": "success"
+    },
+    "differentiators": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775545418.0249956,
+      "status": "success"
+    },
+    "draft": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775545418.0249982,
+      "status": "success"
+    },
+    "compliance": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775545418.0250013,
+      "status": "success"
+    },
+    "ats": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775545418.0279737,
+      "status": "success"
+    },
+    "actions": {
+      "duration_seconds": 0.0,
+      "completed_at": 1775545418.028076,
+      "status": "success"
+    }
+  },
+  "overall_metrics": {
+    "overall_score": 0.393,
+    "overall_score_100": 39.34,
+    "ats_score": 0.427,
+    "ats_score_100": 42.69,
+    "accuracy_metrics": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    "bias_score": 0.1,
+    "fairness_score": 0.9,
+    "keyword_coverage": 0.0,
+    "embedding_similarity": 0.711
+  },
+  "artifacts_summary": {
+    "has_jd": true,
+    "has_profile": true,
+    "has_ats": true,
+    "has_generated": true
+  },
+  "log_entries": [
+    "intake: recorded",
+    "jd: already complete",
+    "profile: parsed and normalized",
+    "gaps: analyzed",
+    "differentiators: identified",
+    "draft: generated",
+    "compliance: checked",
+    "ats: scored (aggregate=0.427)",
+    "actions: generated and optimized"
+  ]
+}

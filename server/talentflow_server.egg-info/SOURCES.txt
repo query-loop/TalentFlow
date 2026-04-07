@@ -9,6 +9,7 @@ app/models_registry.py
 app/storage.py
 app/tasks.py
 app/worker.py
+app/agents/ats_comparison.py
 app/agents/ats_formatter.py
 app/agents/bullet_optimizer.py
 app/agents/embedder.py
@@ -68,6 +69,7 @@ app/utils/lever_extractor.py
 app/utils/llm_extractor.py
 app/utils/net.py
 app/utils/normalize.py
+app/utils/playwright_fetcher.py
 app/utils/proxy_rotator.py
 app/utils/queue.py
 app/utils/rapidapi_jobs.py

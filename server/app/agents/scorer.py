@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from typing import Dict, Any, List, Tuple
 import re
+import time
 from app.agents.embedder import embed_texts
+from app.agents.ats_comparison import compare_ats_scorers
 
 
 def _cosine(a: List[float], b: List[float]) -> float:
@@ -95,6 +97,35 @@ def _ats_structure_checks(profile: Dict[str, Any]) -> Tuple[float, Dict[str, boo
     return score, {"has_skills": has_skills, "has_experience": has_experience, "has_education": has_education}
 
 
+def _bias_check(profile: Dict[str, Any], job: Dict[str, Any]) -> Dict[str, Any]:
+    """Check for potential biases in scoring."""
+    profile_text = (profile.get("raw_text") or "").lower()
+    job_text = (job.get("text") or "").lower()
+    
+    # Simple bias indicators (expandable)
+    biased_terms = {
+        "gender": ["he", "she", "his", "her", "man", "woman", "male", "female"],
+        "age": ["young", "old", "experienced", "junior", "senior"],
+        "ethnicity": ["race", "ethnic", "nationality"],
+    }
+    
+    bias_flags = {}
+    for category, terms in biased_terms.items():
+        profile_count = sum(1 for term in terms if term in profile_text)
+        job_count = sum(1 for term in terms if term in job_text)
+        bias_flags[category] = {"profile": profile_count, "job": job_count}
+    
+    # Overall bias score (0-1, higher means more potential bias)
+    total_biased = sum(sum(counts.values()) for counts in bias_flags.values())
+    bias_score = min(1.0, total_biased / 10.0)  # Normalize
+    
+    return {
+        "bias_score": bias_score,
+        "bias_flags": bias_flags,
+        "recommendation": "Review for fairness" if bias_score > 0.5 else "Appears fair"
+    }
+
+
 def score_profile(profile: Dict[str, Any], job: Dict[str, Any], embed_model: str | None = None) -> Dict[str, Any]:
     """Compute component scores and an aggregate score.
 
@@ -117,21 +148,76 @@ def score_profile(profile: Dict[str, Any], job: Dict[str, Any], embed_model: str
         normalized_skills=profile.get("normalized_skills"),
     )
 
+    # Calculate accuracy metrics
+    total_keywords = len(keywords)
+    true_positives = len(matched_keywords)
+    false_negatives = len(missing_keywords)
+    # Assuming all matched are correct (TP), missing are FN, no FP since we don't have ground truth
+    precision = true_positives / max(1, true_positives)  # Since no FP, precision = 1 if any matches
+    recall = true_positives / max(1, total_keywords)
+    f1_score = 2 * precision * recall / max(1, precision + recall)
+
     structure, structure_details = _ats_structure_checks(profile)
+
+    bias_info = _bias_check(profile, job)
 
     # aggregate: weighted sum
     # Bias mitigation: keep structure a small factor; do not score contact fields.
     agg = 0.6 * emb_sim + 0.3 * kw_cov + 0.1 * structure
     agg = max(0.0, min(1.0, agg))
-    return {
-        "version": 2,
+    
+    # Calculate overall score: ATS (50%) + Accuracy (30%) + Fairness (20%)
+    fairness_score = 1.0 - bias_info.get("bias_score", 0.0)
+    overall_score = (agg * 0.5) + (f1_score * 0.3) + (fairness_score * 0.2)
+    overall_score = max(0.0, min(1.0, overall_score))
+    
+    # Convert overall score to 100-point scale for readability
+    overall_score_100 = round(overall_score * 100, 2)
+    ats_score_100 = round(agg * 100, 2)
+    
+    # Prepare scoring dict for comparison
+    talentflow_score = {
         "embedding": emb_sim,
         "keyword_coverage": kw_cov,
+        "fairness_score": fairness_score,
+        "overall_score_100": overall_score_100,
         "structure": structure,
+    }
+    
+    # Compare with open source ATS for effectiveness analysis
+    try:
+        comparison_result = compare_ats_scorers(profile, job, talentflow_score)
+        ats_comparison = comparison_result.get("comparison", {})
+    except Exception as e:
+        ats_comparison = {"error": str(e), "comparison": "skipped"}
+    
+    return {
+        "version": 2,
+        "embedding": round(emb_sim, 3),
+        "keyword_coverage": round(kw_cov, 3),
+        "structure": round(structure, 3),
         "structure_details": structure_details,
         "keyword_hits": len(matched_keywords),
         "keyword_total": len(matched_keywords) + len(missing_keywords),
         "matched_keywords": matched_keywords[:50],
         "missing_keywords": missing_keywords[:50],
-        "aggregate": agg,
+        "accuracy_metrics": {
+            "precision": round(precision, 3),
+            "recall": round(recall, 3),
+            "f1_score": round(f1_score, 3),
+        },
+        "bias": bias_info,
+        "aggregate": round(agg, 3),
+        "ats_score_100": ats_score_100,
+        "fairness_score": round(fairness_score, 3),
+        "overall_score": round(overall_score, 3),
+        "overall_score_100": overall_score_100,
+        "ats_comparison": ats_comparison,
+        "scoring_metadata": {
+            "timestamp": time.time(),
+            "profile_text_length": len(profile_text),
+            "job_text_length": len(job_text),
+            "keywords_evaluated": len(keywords),
+            "model_used": embed_model or "default"
+        }
     }

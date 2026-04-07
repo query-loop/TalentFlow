@@ -1,0 +1,96 @@
+================================================================================
+                     TALENTFLOW PIPELINE EXECUTION REPORT
+================================================================================
+
+Pipeline ID: pl2_1775542319577_9e69de
+Execution Time: 2026-04-07 06:11:59
+Total Duration: 0.01 seconds
+Steps Completed: 9/9
+
+================================================================================
+                            OVERALL PROFILE SCORE
+================================================================================
+
+Overall Match Score (0-100):        41.05/100
+  - Profile matches job requirements with 41.0% fit
+
+Scoring Breakdown:
+  - ATS Score (50% weight):          46.10/100
+  - Accuracy Score (30% weight):     0.00/100
+  - Fairness Score (20% weight):     90.00/100
+
+================================================================================
+                         ACCURACY METRICS DETAILS
+================================================================================
+
+Precision:                           0.000
+  - Of matched keywords, 0.0% were correct
+
+Recall:                              0.000
+  - 0.0% of required keywords found
+
+F1-Score:                            0.000
+  - Combined indicator of precision and recall
+
+================================================================================
+                          MATCHING ANALYSIS DETAILS
+================================================================================
+
+Keyword Coverage:                    0.0%
+Embedding Similarity:                76.8%
+ATS Aggregate Score:                 0.461
+
+================================================================================
+                            FAIRNESS ASSESSMENT
+================================================================================
+
+Bias Detection Score:                0.100
+Fairness Score:                      0.900
+
+Interpretation:
+  ✓ LOW BIAS: Safe to use in hiring decisions
+
+================================================================================
+                          STEP EXECUTION METRICS
+================================================================================
+
+✓ INTAKE                0.000s  [SUCCESS]
+✓ JD                    0.000s  [SUCCESS]
+✓ PROFILE               0.000s  [SUCCESS]
+✓ GAPS                  0.000s  [SUCCESS]
+✓ DIFFERENTIATORS       0.000s  [SUCCESS]
+✓ DRAFT                 0.000s  [SUCCESS]
+✓ COMPLIANCE            0.000s  [SUCCESS]
+✓ ATS                   0.000s  [SUCCESS]
+✓ ACTIONS               0.000s  [SUCCESS]
+
+================================================================================
+                           EXECUTION SUMMARY
+================================================================================
+
+Total Execution Time:                0.01 seconds
+Steps Completed:                     9/9
+Steps Failed:                        0
+
+Status: ✓ SUCCESS - All steps completed
+
+================================================================================
+                             RECOMMENDATION
+================================================================================
+
+WEAK MATCH - Consider other candidates for this role
+
+Overall Score Interpretation:
+  80-100: Excellent match
+  60-79:  Good match
+  40-59:  Fair match
+  0-39:   Poor match
+
+Your Score: 41.05 → WEAK MATCH - Consider other candidates for this role
+
+================================================================================
+                               END OF REPORT
+================================================================================
+Generated: 2026-04-07T06:11:59.749059
+Pipeline ID: pl2_1775542319577_9e69de
+================================================================================

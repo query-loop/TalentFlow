@@ -10,6 +10,7 @@ from app.agents.skill_normalizer import normalize_skills
 from app.agents.scorer import score_profile
 import logging
 import json
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,26 @@ def parse_resume_task(self, candidate_id: str, bucket: str, object_key: str, hf_
 
         # parse
         parsed = extract_profile_from_text(text, hf_model=hf_model)
+
+        # Log parsing results to logs directory
+        log_data = {
+            "timestamp": time.time(),
+            "candidate_id": candidate_id,
+            "operation": "resume_parsing",
+            "parsed_skills_count": len(parsed.get("skills", [])),
+            "parsed_experience_count": len(parsed.get("experience", [])),
+            "parsed_education_count": len(parsed.get("education", [])),
+            "raw_text_length": len(text),
+            "parsing_success": True,
+            "chunks_indexed": count,
+            "ingest_task_id": getattr(ingest_job, 'id', None)
+        }
+        log_file = f"/workspaces/TalentFlow/logs/{candidate_id}_parsing.json"
+        try:
+            with open(log_file, "w") as f:
+                json.dump(log_data, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to save parsing log: {e}")
 
         # store parsed JSON back to MinIO under parsed/{candidate_id}.json
         parsed_key = f"parsed/{candidate_id}.json"
