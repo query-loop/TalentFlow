@@ -146,6 +146,224 @@ def pipeline_report(id: str):
     finally:
         db.close()
 
+
+@router.get("/{id}/report/export-pdf")
+def export_pipeline_report_pdf(id: str):
+    """Export pipeline report as PDF with scores and metrics."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from io import BytesIO
+    
+    db = SessionLocal()
+    try:
+        # Get pipeline and report data
+        row = db.get(PipelineV2Record, id)
+        if not row:
+            row = _migrate_legacy_if_needed(db, id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Pipeline not found")
+        
+        # Get report data
+        data = json.loads(row.statuses_json or "{}") or {}
+        artifacts = data.get("artifacts", {})
+        
+        # Get report
+        try:
+            report_data = pipeline_report(id)
+        except:
+            report_data = {"score": None, "reasons": [], "sections": {}}
+        
+        # Extract pipeline info
+        pipe_name = row.name or f"Pipeline {id}"
+        company = row.company or "N/A"
+        created_at = time.ctime(row.created_at_ms / 1000.0) if row.created_at_ms else "N/A"
+        
+        # Extract JD and Resume
+        jd_text = ""
+        resume_text = ""
+        if artifacts.get("jd") and isinstance(artifacts.get("jd"), dict):
+            jd_obj = artifacts.get("jd") or {}
+            jd_text = jd_obj.get("description") or jd_obj.get("descriptionRaw") or ""
+        
+        if artifacts.get("resume") and isinstance(artifacts.get("resume"), dict):
+            resume_text = (artifacts.get("resume") or {}).get("text") or ""
+        
+        if not resume_text and row.resume_id and str(row.resume_id).startswith("manual:"):
+            resume_text = row.resume_id[len("manual:"):]
+        
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        story = []
+        styles = getSampleStyleSheet()
+        
+        # Define custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#1F2937'),
+            spaceAfter=6,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor=colors.HexColor('#374151'),
+            spaceAfter=6,
+            spaceBefore=12,
+            fontName='Helvetica-Bold',
+            borderColor=colors.HexColor('#D1D5DB'),
+            borderWidth=1,
+            borderPadding=4
+        )
+        
+        normal_style = ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontSize=10,
+            textColor=colors.HexColor('#374151'),
+            spaceAfter=6
+        )
+        
+        # Title
+        story.append(Paragraph(f"TALENTFLOW PIPELINE REPORT", title_style))
+        story.append(Spacer(1, 0.1*inch))
+        
+        # Pipeline Info
+        info_data = [
+            ["Pipeline Name:", pipe_name],
+            ["Pipeline ID:", id],
+            ["Company:", company],
+            ["Created:", created_at],
+        ]
+        info_table = Table(info_data, colWidths=[2*inch, 4*inch])
+        info_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F3F4F6')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#374151')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E5E7EB')),
+        ]))
+        story.append(info_table)
+        story.append(Spacer(1, 0.2*inch))
+        
+        # Overall Score
+        overall_score = report_data.get("score", None)
+        if overall_score is not None:
+            score_color = colors.HexColor('#10B981') if overall_score >= 70 else colors.HexColor('#F59E0B') if overall_score >= 50 else colors.HexColor('#EF4444')
+            story.append(Paragraph("OVERALL SCORE", heading_style))
+            score_data = [[f"{overall_score}%"]]
+            score_table = Table(score_data, colWidths=[6*inch])
+            score_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, 0), score_color),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 20),
+                ('PADDING', (0, 0), (-1, -1), 10),
+            ]))
+            story.append(score_table)
+            story.append(Spacer(1, 0.15*inch))
+        
+        # Reasons
+        reasons = report_data.get("reasons", [])
+        if reasons:
+            story.append(Paragraph("MATCHING REASONS", heading_style))
+            for reason in reasons:
+                story.append(Paragraph(f"• {reason}", normal_style))
+            story.append(Spacer(1, 0.15*inch))
+        
+        # ATS Metrics
+        sections = report_data.get("sections", {})
+        ats_data = sections.get("ats", {})
+        if ats_data:
+            story.append(Paragraph("ATS SCORING BREAKDOWN", heading_style))
+            ats_table_data = []
+            
+            if isinstance(ats_data.get("embedding"), (int, float)):
+                ats_table_data.append([
+                    "Semantic Similarity (60% weight):",
+                    f"{round(float(ats_data.get('embedding', 0)) * 100, 1)}%"
+                ])
+            
+            if isinstance(ats_data.get("keyword_coverage"), (int, float)):
+                ats_table_data.append([
+                    "Keyword Coverage (30% weight):",
+                    f"{round(float(ats_data.get('keyword_coverage', 0)) * 100, 1)}%"
+                ])
+            
+            if isinstance(ats_data.get("aggregate"), (int, float)):
+                ats_table_data.append([
+                    "Overall ATS Score:",
+                    f"{round(float(ats_data.get('aggregate', 0)) * 100, 1)}%"
+                ])
+            
+            if ats_table_data:
+                ats_table = Table(ats_table_data, colWidths=[3.5*inch, 2.5*inch])
+                ats_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F3F4F6')),
+                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#374151')),
+                    ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                    ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('TOPPADDING', (0, 0), (-1, -1), 5),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E5E7EB')),
+                ]))
+                story.append(ats_table)
+                story.append(Spacer(1, 0.15*inch))
+        
+        # Missing Keywords
+        missing_keywords = ats_data.get("missing_keywords", []) if isinstance(ats_data, dict) else []
+        if missing_keywords:
+            story.append(Paragraph("MISSING KEY REQUIREMENTS", heading_style))
+            keywords_str = ", ".join([str(k) for k in missing_keywords[:20]])
+            story.append(Paragraph(keywords_str, normal_style))
+            story.append(Spacer(1, 0.15*inch))
+        
+        # Job Description Summary
+        if jd_text:
+            story.append(Paragraph("JOB DESCRIPTION", heading_style))
+            jd_summary = (jd_text[:300] + "...") if len(jd_text) > 300 else jd_text
+            story.append(Paragraph(jd_summary, normal_style))
+            story.append(Spacer(1, 0.15*inch))
+        
+        # Resume Summary
+        if resume_text:
+            story.append(Paragraph("RESUME SUMMARY", heading_style))
+            resume_summary = (resume_text[:300] + "...") if len(resume_text) > 300 else resume_text
+            story.append(Paragraph(resume_summary, normal_style))
+        
+        # Build PDF
+        doc.build(story)
+        buffer.seek(0)
+        
+        # Return PDF as download
+        filename = f"talentflow_report_{id}.pdf"
+        return StreamingResponse(
+            iter([buffer.getvalue()]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    
+    except Exception as e:
+        logger.error(f"PDF export failed for {id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to export PDF: {e}")
+    finally:
+        db.close()
+
 class EnhancedJDExtractor:
     """
     Enhanced JD extraction with comprehensive anti-bot capabilities for Pipeline V2.

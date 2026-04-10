@@ -347,6 +347,25 @@
     finally { loading = false; }
   }
 
+  async function downloadReportPDF(pipelineId: string) {
+    try {
+      const response = await fetch(`/api/pipelines-v2/${pipelineId}/report/export-pdf`);
+      if (!response.ok) throw new Error('Failed to generate PDF');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `talentflow_report_${pipelineId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (e: any) {
+      error = e?.message || 'Failed to download PDF';
+    }
+  }
+
   function getAtsPercent(p: PipelineV2): number | null {
     const ats = p?.artifacts && (p.artifacts as any).ats;
     if (!ats || typeof ats !== 'object') return null;
@@ -453,6 +472,10 @@
       const artifacts = { ...(p.artifacts || {}), report: { data: rep, text, generatedAt: Date.now() } };
       const updated = await patchPipelineV2(p.id, { artifacts });
       items = items.map(it => it.id === updated.id ? updated : it);
+      
+      // Auto-download PDF after report generation
+      await new Promise(resolve => setTimeout(resolve, 500)); // Small delay to ensure report is saved
+      await downloadReportPDF(p.id);
     } catch (e: any) {
       error = e?.message || 'Failed to generate report';
     } finally {
@@ -532,8 +555,8 @@
               </div>
 
               <!-- Accuracy Metrics (Precision, Recall, F1) -->
-              {@const accuracy = getAccuracyMetrics(p)}
-              {#if accuracy}
+              {#if getAccuracyMetrics(p)}
+                {@const accuracy = getAccuracyMetrics(p)}
                 <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
                   {#if accuracy.f1 !== undefined}
                     F1-Score: {accuracy.f1}%
@@ -584,9 +607,9 @@
                 class="inline-flex items-center text-xs px-2.5 py-1.5 rounded-md backdrop-blur-sm bg-white/40 dark:bg-white/10 border border-white/50 dark:border-white/10 text-gray-800 dark:text-gray-100 shadow-sm hover:bg-white/60 dark:hover:bg-white/20 transition disabled:opacity-60"
                 on:click|stopPropagation={() => generateReportFor(p)}
                 disabled={!!reportBusyById[p.id]}
-                title="Generate and save report"
+                title="Generate report and download as PDF"
               >
-                {reportBusyById[p.id] ? 'Generating…' : 'Generate report'}
+                {reportBusyById[p.id] ? '📥 Generating & Downloading…' : '📥 Generate & Download PDF'}
               </button>
               <a
                 href={`/app/pipeline-v2/${p.id}`}
@@ -876,6 +899,13 @@
           </div>
 
           <div class="mt-3 flex items-center justify-end gap-2">
+            <button
+              class="text-xs px-2 py-1 rounded border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700"
+              on:click={() => snapshotTarget && downloadReportPDF(snapshotTarget.id)}
+              title="Download report as PDF"
+            >
+              📄 PDF
+            </button>
             <a class="text-xs text-blue-600 hover:underline" href={`/app/pipeline-v2/${snapshotTarget.id}`}>Open full</a>
           </div>
         </div>
