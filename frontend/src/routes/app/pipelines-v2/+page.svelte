@@ -899,13 +899,6 @@
           </div>
 
           <div class="mt-3 flex items-center justify-end gap-2">
-            <button
-              class="text-xs px-2 py-1 rounded border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700"
-              on:click={() => snapshotTarget && downloadReportPDF(snapshotTarget.id)}
-              title="Download report as PDF"
-            >
-              📄 PDF
-            </button>
             <a class="text-xs text-blue-600 hover:underline" href={`/app/pipeline-v2/${snapshotTarget.id}`}>Open full</a>
           </div>
         </div>
