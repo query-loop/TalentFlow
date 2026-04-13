@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-logs dev
+.PHONY: dev-up dev-down dev-logs dev restart
 
 dev-up:
 	bash scripts/dev-up.sh
@@ -11,6 +11,9 @@ dev-logs:
 
 dev:
 	bash scripts/dev.sh
+
+restart:
+	bash scripts/restart.sh
 
 .PHONY: up down logs ps token health
 
