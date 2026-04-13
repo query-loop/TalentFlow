@@ -28,6 +28,8 @@ stop_pid worker
 
 # Also free common ports just in case
 fuser -k 8080/tcp >/dev/null 2>&1 || true
+fuser -k 8081/tcp >/dev/null 2>&1 || true
+fuser -k 8082/tcp >/dev/null 2>&1 || true
 fuser -k 5173/tcp >/dev/null 2>&1 || true
 
 echo "[dev] Stopped. Logs in $RUN_DIR/*.log"

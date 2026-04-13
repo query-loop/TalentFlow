@@ -1,0 +1,80 @@
+{
+  "name": "TalentFlow",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+  // Forward all service ports so they appear in the Codespaces "Ports" panel
+  "forwardPorts": [
+    5173,
+    5174,
+    8081,
+    9002,
+    6379,
+    8000,
+    9000,
+    9001,
+    5555
+  ],
+  "portsAttributes": {
+    "5173": {
+      "label": "Frontend dev (SvelteKit)",
+      "onAutoForward": "openBrowser",
+      "protocol": "https"
+    },
+    "5174": {
+      "label": "Frontend docker (SvelteKit)",
+      "onAutoForward": "openBrowser",
+      "protocol": "https"
+    },
+    "8081": {
+      "label": "Backend dev (FastAPI)",
+      "onAutoForward": "notify",
+      "protocol": "https"
+    },
+    "9002": {
+      "label": "Backend docker (FastAPI)",
+      "onAutoForward": "notify",
+      "protocol": "https"
+    },
+    "6379": {
+      "label": "Redis",
+      "onAutoForward": "silent"
+    },
+    "8000": {
+      "label": "Chroma",
+      "onAutoForward": "silent"
+    },
+    "9000": {
+      "label": "MinIO",
+      "onAutoForward": "silent"
+    },
+    "9001": {
+      "label": "MinIO Console",
+      "onAutoForward": "silent"
+    },
+    "5555": {
+      "label": "Flower (Celery)",
+      "onAutoForward": "silent"
+    }
+  },
+  "postStartCommand": "bash scripts/dev-up.sh > /tmp/dev-up.log 2>&1 &",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "svelte.svelte-vscode",
+        "ms-python.python",
+        "charliermarsh.ruff"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

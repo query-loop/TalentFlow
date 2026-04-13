@@ -102,7 +102,7 @@ case "$cmd" in
   stop)
     if [ "$use_compose" = true ]; then
       echo "Stopping docker compose services..."
-      docker compose down --volumes --remove-orphans
+      docker compose down --remove-orphans
     elif command -v make >/dev/null 2>&1 && make -n down >/dev/null 2>&1; then
       echo "Running: make down"
       make down
@@ -112,9 +112,19 @@ case "$cmd" in
     fi
     ;;
   restart)
-    "$0" stop
-    sleep 2
-    "$0" start
+    if [ "$use_compose" = true ]; then
+      echo "Restarting docker compose services..."
+      docker compose stop
+      sleep 2
+      docker compose up -d --build
+      docker compose ps
+      wait_for_http "http://localhost:5174/" 60 || echo "Frontend didn't respond in time"
+      wait_for_http "http://localhost:9002/api/health" 60 || echo "Backend didn't respond in time"
+    else
+      "$0" stop
+      sleep 2
+      "$0" start
+    fi
     ;;
   status)
     if [ "$use_compose" = true ]; then
