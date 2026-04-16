@@ -9,6 +9,11 @@ const HMR_HOST = process.env.HMR_HOST || (isCodespaces ? process.env.CODESPACE_N
 const HMR_CLIENT_PORT = process.env.HMR_CLIENT_PORT ? Number(process.env.HMR_CLIENT_PORT) : (isCodespaces ? 443 : undefined);
 const HMR_PROTOCOL = process.env.HMR_PROTOCOL || (isCodespaces ? 'wss' : 'ws');
 
+// Backend URL for proxy
+const BACKEND_URL = isCodespaces 
+  ? `http://server:8080`
+  : (process.env.BACKEND_BASE || 'http://localhost:8080');
+
 export default defineConfig({
   plugins: [sveltekit()],
   server: {
@@ -25,7 +30,7 @@ export default defineConfig({
     proxy: {
       // Proxy API calls to the backend during dev so browser uses same origin
       '/api': {
-        target: process.env.BACKEND_BASE || 'http://localhost:8080',
+        target: BACKEND_URL,
         changeOrigin: true,
         secure: false,
         // Don't rewrite the path; keep /api prefix

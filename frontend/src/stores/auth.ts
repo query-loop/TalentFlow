@@ -17,8 +17,8 @@ token.subscribe((value) => {
   }
 });
 
-// API base URL
-const API_BASE = import.meta.env.VITE_API_URL || 'http://server:8080';
+// API base URL - use relative path for proxy in dev
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export async function sendMagicLink(email: string) {
   loading.set(true);

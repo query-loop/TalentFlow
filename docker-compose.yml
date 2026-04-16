@@ -90,7 +90,7 @@ services:
       - ./frontend:/app
     environment:
       - BACKEND_BASE=http://server:8080
-      - VITE_API_URL=http://server:8080
+      - VITE_API_URL=https://animated-zebra-wr5wxg47pr942v56j-9002.app.github.dev
       # For proxied development environments (Codespaces/GitHub.dev) force HMR to wss and point the client to the
       # forwarded host port 5174. These env vars are read by frontend/vite.config.ts
       - HMR_PROTOCOL=wss
