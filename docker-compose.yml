@@ -33,6 +33,11 @@ services:
       # Optional: Tor password if using control
       # - TOR_PASSWORD=your_tor_password
       - CHROMA_SERVER_URL=http://chroma:8000
+      # Email configuration for MailHog
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - FROM_EMAIL=noreply@talentflow.dev
+      - FRONTEND_BASE_URL=https://animated-zebra-wr5wxg47pr942v56j-5174.app.github.dev
     command: bash -lc "pip install -U pip && pip install -e . && uvicorn app.main:app --host 0.0.0.0 --port 8080"
     ports:
       - "9002:8080"
@@ -121,6 +126,16 @@ services:
       retries: 10
     volumes:
       - minio_data:/data
+
+  # MailHog - Open source email testing tool
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"    # SMTP server
+      - "8025:8025"    # Web interface
+    environment:
+      - MH_STORAGE=maildir
+      - MH_MAILDIR_PATH=/tmp/mailhog
 
   # Chroma vector DB (server mode). Uses default HTTP API port 8000.
   chroma:
