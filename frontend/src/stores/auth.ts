@@ -18,7 +18,7 @@ token.subscribe((value) => {
 });
 
 // API base URL
-const API_BASE = process.env.VITE_API_URL || 'http://localhost:9002';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:9002';
 
 export async function sendMagicLink(email: string) {
   loading.set(true);
