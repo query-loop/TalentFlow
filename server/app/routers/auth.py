@@ -257,10 +257,45 @@ async def verify_magic_link(
 
 
 @router.get("/me")
-async def get_current_user(
-    db: Session = Depends(get_db),
-    token: str = None
-) -> UserResponse:
+async from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends
+
+# Authentication scheme
+security = HTTPBearer()
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    """
+    Dependency to get current authenticated user from JWT token in Authorization header
+    """
+    token = credentials.credentials
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+    
+    stmt = select(User).where(User.id == int(user_id))
+    user = db.scalar(stmt)
+    
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+    
+    return user
     """
     Get current authenticated user from token
     """
