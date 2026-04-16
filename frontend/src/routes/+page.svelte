@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fade, slide } from 'svelte/transition';
+  import { isAuthenticated } from '../stores/auth';
 
   let loaded = false;
   let backendStatus = 'Checking...';
@@ -31,6 +32,34 @@
 </svelte:head>
 
 <div class="min-h-screen bg-gray-50">
+  <!-- Header Navigation -->
+  <header class="sticky top-0 z-50 bg-white border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <div class="flex items-center gap-8">
+        <a href="/" class="text-2xl font-bold text-black">TalentFlow</a>
+        <nav class="hidden md:flex gap-6 text-gray-600">
+          <a href="#features" class="hover:text-black transition-colors">Features</a>
+          <a href="#about" class="hover:text-black transition-colors">About</a>
+          <a href="#" class="hover:text-black transition-colors">Pricing</a>
+        </nav>
+      </div>
+      <div class="flex items-center gap-4">
+        {#if !$isAuthenticated}
+          <a href="/auth/login" class="text-gray-600 font-semibold hover:text-black transition-colors">
+            Log In
+          </a>
+          <a href="/auth/login" class="bg-black text-white font-semibold py-2 px-6 rounded-lg hover:bg-gray-800 transition-colors">
+            Sign Up
+          </a>
+        {:else}
+          <a href="/app/dashboard" class="bg-black text-white font-semibold py-2 px-6 rounded-lg hover:bg-gray-800 transition-colors">
+            Dashboard
+          </a>
+        {/if}
+      </div>
+    </div>
+  </header>
+
   <!-- Hero Section -->
   <section class="bg-white py-20 px-4">
     <div class="max-w-5xl mx-auto text-center" transition:fade={{ duration: 1000 }}>
@@ -47,9 +76,9 @@
           TalentFlow empowers you to find, evaluate, and onboard top talent faster than ever. Simplify your recruitment process with cutting-edge AI and intuitive tools designed for modern HR teams.
         </p>
         <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
-          <button class="bg-black hover:bg-gray-800 text-white font-semibold py-4 px-10 rounded-lg text-lg transition-all duration-300 shadow-lg hover:shadow-xl">
+          <a href="/auth/login" class="inline-block bg-black hover:bg-gray-800 text-white font-semibold py-4 px-10 rounded-lg text-lg transition-all duration-300 shadow-lg hover:shadow-xl text-center">
             Get Started Today
-          </button>
+          </a>
           <button class="border-2 border-black text-black hover:bg-black hover:text-white font-semibold py-4 px-10 rounded-lg text-lg transition-all duration-300">
             Learn More
           </button>
@@ -59,7 +88,7 @@
   </section>
 
   <!-- Features Section -->
-  <section class="py-20 px-4 bg-white">
+  <section class="py-20 px-4 bg-white" id="features">
     <div class="max-w-7xl mx-auto">
       <div class="text-center mb-16">
         <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Why Choose TalentFlow?</h2>
@@ -92,7 +121,7 @@
   </section>
 
   <!-- About Section -->
-  <section class="py-20 px-4 bg-gray-50">
+  <section class="py-20 px-4 bg-gray-50" id="about">
     <div class="max-w-5xl mx-auto">
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
         <div transition:slide={{ duration: 800, delay: 200 }}>
@@ -141,9 +170,9 @@
       <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-6">Ready to Get Started?</h2>
       <p class="text-lg text-gray-700 mb-10">Join thousands of companies transforming their hiring process with TalentFlow.</p>
       <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
-        <button class="bg-black hover:bg-gray-800 text-white font-semibold py-4 px-10 rounded-lg text-lg transition-all duration-300 shadow-lg hover:shadow-xl">
+        <a href="/auth/login" class="inline-block bg-black hover:bg-gray-800 text-white font-semibold py-4 px-10 rounded-lg text-lg transition-all duration-300 shadow-lg hover:shadow-xl text-center">
           Start Free Trial
-        </button>
+        </a>
         <button class="border-2 border-black text-black hover:bg-black hover:text-white font-semibold py-4 px-10 rounded-lg text-lg transition-all duration-300">
           Schedule Demo
         </button>
@@ -156,7 +185,7 @@
     <div class="max-w-7xl mx-auto">
       <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
         <div>
-          <h3 class="text-2xl font-bold mb-4">TalentFlow</h3>
+          <a href="/" class="text-2xl font-bold mb-4 inline-block text-white hover:text-gray-300 transition-colors">TalentFlow</a>
           <p class="text-gray-400 leading-relaxed">Streamline your hiring process with AI-powered tools and insights.</p>
         </div>
         <div>
