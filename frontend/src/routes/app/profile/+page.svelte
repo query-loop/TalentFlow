@@ -1,7 +1,7 @@
 <script lang="ts">
   import { user } from '../../../stores/auth';
 
-  const API_BASE = 'http://localhost:9002';
+  const API_BASE = 'http://server:8080';
 
   let fullName = '';
   let email = '';
