@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import ats, crawl, extract, generate, jd, keywords, pipelines_v2, extraction_test, resume, qa, library, rapidapi_jobs, scoring
 from app.routers import agents
 from app.routers import agents_v1
+from app.routers import auth
 from .models import init_db, SessionLocal
 from sqlalchemy import text
 import logging
@@ -58,6 +59,7 @@ app.include_router(resume.router, prefix="/api/resume", tags=["resume"])
 app.include_router(scoring.router, prefix="/api/scoring", tags=["scoring"])
 app.include_router(qa.router, prefix="/api/qa", tags=["qa"])
 app.include_router(library.router, prefix="/api/library", tags=["library"])
+app.include_router(auth.router, tags=["auth"])
 app.include_router(extract.router, prefix="/api/extract", tags=["extract"])
 app.include_router(crawl.router, prefix="/api/crawl", tags=["crawl"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
