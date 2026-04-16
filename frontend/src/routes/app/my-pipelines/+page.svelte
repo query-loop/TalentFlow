@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { user, token } from '../../../stores/auth';
 
+  const API_BASE = 'http://localhost:9002';
+
   interface Pipeline {
     id: number;
     name: string;
@@ -22,7 +24,7 @@
         return;
       }
 
-      const response = await fetch('/api/pipelines-v2', {
+      const response = await fetch(`${API_BASE}/api/pipelines-v2`, {
         headers: {
           'Authorization': `Bearer ${authToken}`
         }

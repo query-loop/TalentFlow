@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { isAuthenticated } from '../../stores/auth';
   import Icon from '$lib/Icon.svelte';
 
   let sidebarOpen = false;
@@ -40,6 +42,12 @@
   ] as const;
 
   onMount(() => {
+  // Check authentication
+  if (!$isAuthenticated) {
+    goto('/auth/login');
+    return;
+  }
+
   // Theme initialization removed (theme toggle no longer available)
 
     // Respect prefers-reduced-motion and set up spotlight tracker

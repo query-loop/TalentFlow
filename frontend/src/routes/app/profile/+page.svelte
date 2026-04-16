@@ -1,6 +1,8 @@
 <script lang="ts">
   import { user } from '../../../stores/auth';
 
+  const API_BASE = 'http://localhost:9002';
+
   let fullName = '';
   let email = '';
   let saving = false;
@@ -18,7 +20,7 @@
     try {
       // Call profile update API
       const token = localStorage.getItem('authToken');
-      const response = await fetch('/api/auth/profile', {
+      const response = await fetch(`${API_BASE}/api/auth/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

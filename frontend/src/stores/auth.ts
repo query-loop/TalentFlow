@@ -48,7 +48,7 @@ export async function sendMagicLink(email: string) {
   }
 }
 
-export async function verifyMagicLink(token: string) {
+export async function verifyMagicLink(magicToken: string) {
   loading.set(true);
   error.set(null);
 
@@ -58,7 +58,7 @@ export async function verifyMagicLink(token: string) {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ token })
+      body: JSON.stringify({ token: magicToken })
     });
 
     if (!response.ok) {

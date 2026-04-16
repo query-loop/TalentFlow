@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { goto, page } from '$app/navigation';
-  import { verifyMagicLink, error, loading ) from '../../stores/auth';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import { verifyMagicLink, error, loading } from '../../../stores/auth';
   import { onMount } from 'svelte';
 
   let verifying = true;

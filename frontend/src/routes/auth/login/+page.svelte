@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { sendMagicLink, error, loading } from '../../stores/auth';
+  import { sendMagicLink, error, loading } from '../../../stores/auth';
 
   let email = '';
   let submitted = false;
