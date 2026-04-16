@@ -24,6 +24,7 @@ app/routers/__init__.py
 app/routers/agents.py
 app/routers/agents_v1.py
 app/routers/ats.py
+app/routers/auth.py
 app/routers/crawl.py
 app/routers/extract.py
 app/routers/extraction_test.py

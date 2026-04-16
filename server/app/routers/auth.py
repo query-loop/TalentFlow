@@ -149,7 +149,7 @@ async def send_magic_link_email(email: str, magic_link: str, background_tasks: B
     background_tasks.add_task(send_email_sync)
 
 
-@router.post("/api/auth/send-magic-link")
+@router.post("/send-magic-link")
 async def send_magic_link(
     request: EmailRequest,
     background_tasks: BackgroundTasks,
@@ -193,7 +193,7 @@ async def send_magic_link(
     }
 
 
-@router.post("/api/auth/verify")
+@router.post("/verify")
 async def verify_magic_link(
     request: VerifyTokenRequest,
     db: Session = Depends(get_db)
@@ -256,7 +256,7 @@ async def verify_magic_link(
     )
 
 
-@router.get("/api/auth/me")
+@router.get("/me")
 async def get_current_user(
     db: Session = Depends(get_db),
     token: str = None
@@ -296,7 +296,7 @@ async def get_current_user(
     return UserResponse.from_orm(user)
 
 
-@router.post("/api/auth/logout")
+@router.post("/logout")
 async def logout():
     """
     Logout endpoint (client should remove token from local storage)
@@ -304,7 +304,7 @@ async def logout():
     return {"message": "Logged out successfully"}
 
 
-@router.put("/api/auth/profile")
+@router.put("/profile")
 async def update_profile(
     full_name: Optional[str] = None,
     db: Session = Depends(get_db),
